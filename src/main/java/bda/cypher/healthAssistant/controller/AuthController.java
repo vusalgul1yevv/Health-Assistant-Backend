@@ -2,6 +2,7 @@ package bda.cypher.healthAssistant.controller;
 
 import bda.cypher.healthAssistant.dto.AuthResponseDTO;
 import bda.cypher.healthAssistant.dto.LoginRequestDTO;
+import bda.cypher.healthAssistant.dto.RefreshTokenRequestDTO;
 import bda.cypher.healthAssistant.dto.UserRegisterRequestDTO;
 import bda.cypher.healthAssistant.dto.UserResponseDTO;
 import bda.cypher.healthAssistant.service.AuthService;
@@ -22,12 +23,17 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<AuthResponseDTO> register(@Valid @RequestBody UserRegisterRequestDTO request) {
         UserResponseDTO user = userService.registerUser(request);
-        AuthResponseDTO response = new AuthResponseDTO(true, "Qeydiyyat uğurludur", null, user);
+        AuthResponseDTO response = new AuthResponseDTO(true, "Qeydiyyat uğurludur", null, null, user);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDTO> login(@Valid @RequestBody LoginRequestDTO request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponseDTO> refresh(@Valid @RequestBody RefreshTokenRequestDTO request) {
+        return ResponseEntity.ok(authService.refreshToken(request));
     }
 }
