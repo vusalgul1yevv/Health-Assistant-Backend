@@ -24,10 +24,14 @@ public class UserRegisterRequestDTO {
 
     @NotNull(message = "Boy qeyd olunmalıdır")
     @Positive(message = "Boy müsbət ədəd olmalıdır")
+    @DecimalMin(value = "50", message = "Boy 50 ilə 250 arası olmalıdır")
+    @DecimalMax(value = "250", message = "Boy 50 ilə 250 arası olmalıdır")
     private Double height;
 
     @NotNull(message = "Çəki qeyd olunmalıdır")
     @Positive(message = "Çəki müsbət ədəd olmalıdır")
+    @DecimalMin(value = "20", message = "Çəki 20 ilə 400 arası olmalıdır")
+    @DecimalMax(value = "300", message = "Çəki 20 ilə 400 arası olmalıdır")
     private Double weight;
 
     @NotNull(message = "Xəstəlik seçilməlidir")
