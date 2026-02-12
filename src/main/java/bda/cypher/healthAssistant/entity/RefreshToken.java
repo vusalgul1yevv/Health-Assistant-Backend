@@ -24,6 +24,8 @@ public class RefreshToken {
     @Column(nullable = false)
     private Instant createdAt;
 
+    private Instant lastUsedAt;
+
     private Instant revokedAt;
 
     public Long getId() {
@@ -64,6 +66,14 @@ public class RefreshToken {
 
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public Instant getLastUsedAt() {
+        return lastUsedAt;
+    }
+
+    public void setLastUsedAt(Instant lastUsedAt) {
+        this.lastUsedAt = lastUsedAt;
     }
 
     public Instant getRevokedAt() {

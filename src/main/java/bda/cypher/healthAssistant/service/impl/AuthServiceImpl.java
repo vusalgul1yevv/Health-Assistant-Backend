@@ -88,6 +88,7 @@ public class AuthServiceImpl implements AuthService {
             throw new UnauthorizedException("Refresh token etibarsızdır");
         }
 
+        storedToken.setLastUsedAt(now);
         storedToken.setRevokedAt(now);
         refreshTokenRepository.save(storedToken);
 
