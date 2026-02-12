@@ -47,6 +47,12 @@ public class UserServiceImpl implements UserService {
         return mapToDTO(savedUser);
     }
 
+    public UserResponseDTO getUserByEmail(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
+        return mapToDTO(user);
+    }
+
     private UserResponseDTO mapToDTO(User user) {
         UserResponseDTO dto = new UserResponseDTO();
         dto.setId(user.getId());

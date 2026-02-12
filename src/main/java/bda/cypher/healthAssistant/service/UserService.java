@@ -12,4 +12,5 @@ import org.springframework.stereotype.Service;
 
 public interface UserService {
     UserResponseDTO registerUser(UserRegisterRequestDTO request);
+    UserResponseDTO getUserByEmail(String email);
 }
