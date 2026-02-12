@@ -8,6 +8,7 @@ import bda.cypher.healthAssistant.dto.RefreshTokenRequestDTO;
 import bda.cypher.healthAssistant.dto.ResetPasswordRequestDTO;
 import bda.cypher.healthAssistant.dto.UserRegisterRequestDTO;
 import bda.cypher.healthAssistant.dto.UserResponseDTO;
+import bda.cypher.healthAssistant.dto.UserUpdateRequestDTO;
 import bda.cypher.healthAssistant.service.AuthService;
 import bda.cypher.healthAssistant.service.UserService;
 import jakarta.validation.Valid;
@@ -45,6 +46,13 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<UserResponseDTO> me(Authentication authentication) {
         UserResponseDTO user = userService.getUserByEmail(authentication.getName());
+        return ResponseEntity.ok(user);
+    }
+
+    @PutMapping("/me")
+    public ResponseEntity<UserResponseDTO> updateMe(@Valid @RequestBody UserUpdateRequestDTO request,
+                                                    Authentication authentication) {
+        UserResponseDTO user = userService.updateUser(authentication.getName(), request);
         return ResponseEntity.ok(user);
     }
 

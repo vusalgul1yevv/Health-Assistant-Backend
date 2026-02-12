@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 
 import bda.cypher.healthAssistant.dto.UserRegisterRequestDTO;
 import bda.cypher.healthAssistant.dto.UserResponseDTO;
+import bda.cypher.healthAssistant.dto.UserUpdateRequestDTO;
 import bda.cypher.healthAssistant.entity.HealthCondition;
 import bda.cypher.healthAssistant.entity.User;
 import bda.cypher.healthAssistant.repository.HealthConditionRepository;
@@ -51,6 +52,38 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User tapılmadı"));
         return mapToDTO(user);
+    }
+
+    public UserResponseDTO updateUser(String email, UserUpdateRequestDTO request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
+
+        if (request.getFullName() != null && !request.getFullName().isBlank()) {
+            user.setFullName(request.getFullName());
+        }
+        if (request.getDateOfBirth() != null) {
+            user.setDateOfBirth(request.getDateOfBirth());
+        }
+        if (request.getGender() != null && !request.getGender().isBlank()) {
+            user.setGender(request.getGender());
+        }
+        if (request.getHeight() != null) {
+            user.setHeight(request.getHeight());
+        }
+        if (request.getWeight() != null) {
+            user.setWeight(request.getWeight());
+        }
+        if (request.getSeverity() != null && !request.getSeverity().isBlank()) {
+            user.setSeverity(request.getSeverity());
+        }
+        if (request.getConditionId() != null) {
+            HealthCondition condition = healthConditionRepository.findById(request.getConditionId())
+                    .orElseThrow(() -> new RuntimeException("Condition not found"));
+            user.setHealthCondition(condition);
+        }
+
+        User savedUser = userRepository.save(user);
+        return mapToDTO(savedUser);
     }
 
     private UserResponseDTO mapToDTO(User user) {
