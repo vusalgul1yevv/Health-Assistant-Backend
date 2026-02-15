@@ -2,6 +2,7 @@ package bda.cypher.healthAssistant.service.impl;
 
 import bda.cypher.healthAssistant.dto.MedicationCreateRequestDTO;
 import bda.cypher.healthAssistant.dto.MedicationResponseDTO;
+import bda.cypher.healthAssistant.dto.MedicationUpdateRequestDTO;
 import bda.cypher.healthAssistant.entity.Medication;
 import bda.cypher.healthAssistant.entity.User;
 import bda.cypher.healthAssistant.repository.MedicationRepository;
@@ -50,6 +51,47 @@ public class MedicationServiceImpl implements MedicationService {
                 .stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public MedicationResponseDTO updateMedication(String userEmail, Long medicationId, MedicationUpdateRequestDTO request) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
+
+        Medication medication = medicationRepository.findByIdAndUserId(medicationId, user.getId())
+                .orElseThrow(() -> new RuntimeException("Dərman tapılmadı"));
+
+        if (request.getName() != null && !request.getName().isBlank()) {
+            medication.setName(request.getName());
+        }
+        if (request.getDose() != null) {
+            medication.setDose(request.getDose());
+        }
+        if (request.getTime() != null && !request.getTime().isBlank()) {
+            medication.setTime(request.getTime());
+        }
+        if (request.getFrequency() != null && !request.getFrequency().isBlank()) {
+            medication.setFrequency(request.getFrequency());
+        }
+        if (request.getNotes() != null) {
+            medication.setNotes(request.getNotes());
+        }
+        if (request.getIntakeCondition() != null) {
+            medication.setIntakeCondition(request.getIntakeCondition());
+        }
+
+        Medication saved = medicationRepository.save(medication);
+        return mapToDTO(saved);
+    }
+
+    @Override
+    public void deleteMedication(String userEmail, Long medicationId) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
+        long deleted = medicationRepository.deleteByIdAndUserId(medicationId, user.getId());
+        if (deleted == 0) {
+            throw new RuntimeException("Dərman tapılmadı");
+        }
     }
 
     private MedicationResponseDTO mapToDTO(Medication medication) {
