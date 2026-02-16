@@ -9,6 +9,7 @@ import bda.cypher.healthAssistant.repository.MedicationRepository;
 import bda.cypher.healthAssistant.repository.UserRepository;
 import bda.cypher.healthAssistant.service.MedicationService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -85,6 +86,7 @@ public class MedicationServiceImpl implements MedicationService {
     }
 
     @Override
+    @Transactional
     public void deleteMedication(String userEmail, Long medicationId) {
         User user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User tapılmadı"));
