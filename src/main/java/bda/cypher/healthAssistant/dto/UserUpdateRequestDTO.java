@@ -2,12 +2,15 @@ package bda.cypher.healthAssistant.dto;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Positive;
 import java.time.LocalDate;
 
 public class UserUpdateRequestDTO {
     private String fullName;
+    @Email(message = "Düzgün email formatı daxil edin")
+    private String email;
     @Past(message = "Doğum tarixi keçmişdə olmalıdır")
     private LocalDate dateOfBirth;
     private String gender;
@@ -24,6 +27,9 @@ public class UserUpdateRequestDTO {
 
     public String getFullName() { return fullName; }
     public void setFullName(String fullName) { this.fullName = fullName; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
 
     public LocalDate getDateOfBirth() { return dateOfBirth; }
     public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }

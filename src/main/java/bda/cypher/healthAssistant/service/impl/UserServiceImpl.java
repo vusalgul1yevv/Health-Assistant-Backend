@@ -61,6 +61,13 @@ public class UserServiceImpl implements UserService {
         if (request.getFullName() != null && !request.getFullName().isBlank()) {
             user.setFullName(request.getFullName());
         }
+        if (request.getEmail() != null && !request.getEmail().isBlank()
+                && !request.getEmail().equalsIgnoreCase(user.getEmail())) {
+            if (userRepository.existsByEmail(request.getEmail())) {
+                throw new RuntimeException("Email already exists");
+            }
+            user.setEmail(request.getEmail());
+        }
         if (request.getDateOfBirth() != null) {
             user.setDateOfBirth(request.getDateOfBirth());
         }
@@ -99,8 +106,10 @@ public class UserServiceImpl implements UserService {
         dto.setSeverity(user.getSeverity());
         
         if (user.getHealthCondition() != null) {
+            dto.setConditionId(user.getHealthCondition().getId());
             dto.setHealthCondition(user.getHealthCondition().getName());
             if (user.getHealthCondition().getCategory() != null) {
+                dto.setConditionCategoryId(user.getHealthCondition().getCategory().getId());
                 dto.setConditionCategory(user.getHealthCondition().getCategory().getName());
             }
         }

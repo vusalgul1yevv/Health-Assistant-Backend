@@ -11,6 +11,8 @@ public class UserResponseDTO {
     private String gender;
     private Double height;
     private Double weight;
+    private Long conditionId;
+    private Long conditionCategoryId;
     private String healthCondition;
     private String conditionCategory;
     private String severity;
@@ -38,6 +40,12 @@ public class UserResponseDTO {
 
     public Double getWeight() { return weight; }
     public void setWeight(Double weight) { this.weight = weight; }
+
+    public Long getConditionId() { return conditionId; }
+    public void setConditionId(Long conditionId) { this.conditionId = conditionId; }
+
+    public Long getConditionCategoryId() { return conditionCategoryId; }
+    public void setConditionCategoryId(Long conditionCategoryId) { this.conditionCategoryId = conditionCategoryId; }
 
     public String getHealthCondition() { return healthCondition; }
     public void setHealthCondition(String healthCondition) { this.healthCondition = healthCondition; }

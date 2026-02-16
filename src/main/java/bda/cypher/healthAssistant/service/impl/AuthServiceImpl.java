@@ -176,8 +176,10 @@ public class AuthServiceImpl implements AuthService {
         dto.setSeverity(user.getSeverity());
 
         if (user.getHealthCondition() != null) {
+            dto.setConditionId(user.getHealthCondition().getId());
             dto.setHealthCondition(user.getHealthCondition().getName());
             if (user.getHealthCondition().getCategory() != null) {
+                dto.setConditionCategoryId(user.getHealthCondition().getCategory().getId());
                 dto.setConditionCategory(user.getHealthCondition().getCategory().getName());
             }
         }
