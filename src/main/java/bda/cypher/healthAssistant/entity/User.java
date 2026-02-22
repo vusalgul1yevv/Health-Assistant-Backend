@@ -2,6 +2,8 @@ package bda.cypher.healthAssistant.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "users",
@@ -40,6 +42,22 @@ public class User {
 
     private String severity;
 
+    @ManyToMany
+    @JoinTable(
+            name = "user_keywords",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "keyword_id")
+    )
+    private Set<Keyword> keywords = new HashSet<>();
+
+    @ManyToMany
+    @JoinTable(
+            name = "user_saved_news",
+            joinColumns = @JoinColumn(name = "user_id"),
+            inverseJoinColumns = @JoinColumn(name = "news_id")
+    )
+    private Set<News> savedNews = new HashSet<>();
+
     public User() {}
 
     public Long getId() { return id; }
@@ -74,4 +92,10 @@ public class User {
 
     public String getSeverity() { return severity; }
     public void setSeverity(String severity) { this.severity = severity; }
+
+    public Set<Keyword> getKeywords() { return keywords; }
+    public void setKeywords(Set<Keyword> keywords) { this.keywords = keywords; }
+
+    public Set<News> getSavedNews() { return savedNews; }
+    public void setSavedNews(Set<News> savedNews) { this.savedNews = savedNews; }
 }
