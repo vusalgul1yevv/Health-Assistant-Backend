@@ -46,9 +46,7 @@ public class MedicationServiceImpl implements MedicationService {
 
     @Override
     public List<MedicationResponseDTO> getUserMedications(String userEmail) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
-        return medicationRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId())
+        return medicationRepository.findAllByUserEmailOrderByCreatedAtDesc(userEmail)
                 .stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
@@ -56,10 +54,7 @@ public class MedicationServiceImpl implements MedicationService {
 
     @Override
     public MedicationResponseDTO updateMedication(String userEmail, Long medicationId, MedicationUpdateRequestDTO request) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
-
-        Medication medication = medicationRepository.findByIdAndUserId(medicationId, user.getId())
+        Medication medication = medicationRepository.findByIdAndUserEmail(medicationId, userEmail)
                 .orElseThrow(() -> new RuntimeException("Dərman tapılmadı"));
 
         if (request.getName() != null && !request.getName().isBlank()) {
@@ -88,9 +83,7 @@ public class MedicationServiceImpl implements MedicationService {
     @Override
     @Transactional
     public void deleteMedication(String userEmail, Long medicationId) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
-        long deleted = medicationRepository.deleteByIdAndUserId(medicationId, user.getId());
+        long deleted = medicationRepository.deleteByIdAndUserEmail(medicationId, userEmail);
         if (deleted == 0) {
             throw new RuntimeException("Dərman tapılmadı");
         }

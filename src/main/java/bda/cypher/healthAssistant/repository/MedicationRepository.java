@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface MedicationRepository extends JpaRepository<Medication, Long> {
-    List<Medication> findAllByUserIdOrderByCreatedAtDesc(Long userId);
-    Optional<Medication> findByIdAndUserId(Long id, Long userId);
-    long deleteByIdAndUserId(Long id, Long userId);
+    List<Medication> findAllByUserEmailOrderByCreatedAtDesc(String email);
+    Optional<Medication> findByIdAndUserEmail(Long id, String email);
+    long deleteByIdAndUserEmail(Long id, String email);
 }

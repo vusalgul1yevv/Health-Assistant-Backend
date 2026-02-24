@@ -47,10 +47,7 @@ public class WorkoutServiceImpl implements WorkoutService {
 
     @Override
     public List<WorkoutResponseDTO> getUserWorkouts(String userEmail) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
-
-        return workoutRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId())
+        return workoutRepository.findAllByUserEmailOrderByCreatedAtDesc(userEmail)
                 .stream()
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
@@ -58,10 +55,7 @@ public class WorkoutServiceImpl implements WorkoutService {
 
     @Override
     public WorkoutResponseDTO updateWorkout(String userEmail, Long workoutId, WorkoutUpdateRequestDTO request) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
-
-        Workout workout = workoutRepository.findByIdAndUserId(workoutId, user.getId())
+        Workout workout = workoutRepository.findByIdAndUserEmail(workoutId, userEmail)
                 .orElseThrow(() -> new RuntimeException("Məşq tapılmadı"));
 
         if (request.getName() != null && !request.getName().isBlank()) {
@@ -95,10 +89,7 @@ public class WorkoutServiceImpl implements WorkoutService {
 
     @Override
     public void deleteWorkout(String userEmail, Long workoutId) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
-
-        Workout workout = workoutRepository.findByIdAndUserId(workoutId, user.getId())
+        Workout workout = workoutRepository.findByIdAndUserEmail(workoutId, userEmail)
                 .orElseThrow(() -> new RuntimeException("Məşq tapılmadı"));
 
         workoutRepository.delete(workout);
