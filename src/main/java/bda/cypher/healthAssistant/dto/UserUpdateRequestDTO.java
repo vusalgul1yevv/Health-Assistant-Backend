@@ -4,12 +4,14 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Past;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import java.time.LocalDate;
 
 public class UserUpdateRequestDTO {
     private String fullName;
     @Email(message = "Düzgün email formatı daxil edin")
+    @Pattern(regexp = "(?i)^(?:$|[A-Z0-9._%+-]+@gmail\\.com)$", message = "Yalnız gmail.com email qəbul olunur")
     private String email;
     @Past(message = "Doğum tarixi keçmişdə olmalıdır")
     private LocalDate dateOfBirth;
