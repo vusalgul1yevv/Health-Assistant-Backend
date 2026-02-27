@@ -7,6 +7,8 @@ import bda.cypher.healthAssistant.dto.SavedNewsResponseDTO;
 import bda.cypher.healthAssistant.entity.Keyword;
 import bda.cypher.healthAssistant.entity.News;
 import bda.cypher.healthAssistant.entity.User;
+import bda.cypher.healthAssistant.repository.ConditionCategoryTranslationRepository;
+import bda.cypher.healthAssistant.repository.HealthConditionTranslationRepository;
 import bda.cypher.healthAssistant.repository.KeywordRepository;
 import bda.cypher.healthAssistant.repository.NewsRepository;
 import bda.cypher.healthAssistant.repository.UserRepository;
@@ -46,16 +48,22 @@ public class NewsServiceImpl implements NewsService {
     private final UserRepository userRepository;
     private final KeywordRepository keywordRepository;
     private final NewsRepository newsRepository;
+    private final HealthConditionTranslationRepository conditionTranslationRepository;
+    private final ConditionCategoryTranslationRepository categoryTranslationRepository;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
     public NewsServiceImpl(UserRepository userRepository,
                            KeywordRepository keywordRepository,
-                           NewsRepository newsRepository) {
+                           NewsRepository newsRepository,
+                           HealthConditionTranslationRepository conditionTranslationRepository,
+                           ConditionCategoryTranslationRepository categoryTranslationRepository) {
         this.userRepository = userRepository;
         this.keywordRepository = keywordRepository;
         this.newsRepository = newsRepository;
+        this.conditionTranslationRepository = conditionTranslationRepository;
+        this.categoryTranslationRepository = categoryTranslationRepository;
     }
 
     @Override
@@ -65,14 +73,24 @@ public class NewsServiceImpl implements NewsService {
         if (user.getKeywords().isEmpty()) {
             String conditionKeyword = conditionKeyword(user);
             String categoryKeyword = conditionCategoryKeyword(user);
+            String conditionKeywordEn = conditionKeywordEn(user);
+            String categoryKeywordEn = conditionCategoryKeywordEn(user);
             List<String> queries = new ArrayList<>();
             if (conditionKeyword != null) {
                 queries.add(conditionKeyword);
                 ensureKeyword(user, conditionKeyword);
             }
+            if (conditionKeywordEn != null) {
+                queries.add(conditionKeywordEn);
+                ensureKeyword(user, conditionKeywordEn);
+            }
             if (categoryKeyword != null && (conditionKeyword == null || !categoryKeyword.equalsIgnoreCase(conditionKeyword))) {
                 queries.add(categoryKeyword);
                 ensureKeyword(user, categoryKeyword);
+            }
+            if (categoryKeywordEn != null && (categoryKeyword == null || !categoryKeywordEn.equalsIgnoreCase(categoryKeyword))) {
+                queries.add(categoryKeywordEn);
+                ensureKeyword(user, categoryKeywordEn);
             }
             if (queries.isEmpty()) {
                 queries.add("health");
@@ -200,6 +218,24 @@ public class NewsServiceImpl implements NewsService {
             return null;
         }
         return name.trim();
+    }
+
+    private String conditionKeywordEn(User user) {
+        if (user.getHealthCondition() == null) {
+            return null;
+        }
+        return conditionTranslationRepository.findByConditionId(user.getHealthCondition().getId())
+                .map(t -> t.getNameEn() == null || t.getNameEn().isBlank() ? null : t.getNameEn().trim())
+                .orElse(null);
+    }
+
+    private String conditionCategoryKeywordEn(User user) {
+        if (user.getHealthCondition() == null || user.getHealthCondition().getCategory() == null) {
+            return null;
+        }
+        return categoryTranslationRepository.findByCategoryId(user.getHealthCondition().getCategory().getId())
+                .map(t -> t.getNameEn() == null || t.getNameEn().isBlank() ? null : t.getNameEn().trim())
+                .orElse(null);
     }
 
     private void ensureKeyword(User user, String keyword) {
