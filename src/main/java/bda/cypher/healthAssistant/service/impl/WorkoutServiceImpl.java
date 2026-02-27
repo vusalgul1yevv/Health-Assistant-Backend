@@ -384,8 +384,14 @@ public class WorkoutServiceImpl implements WorkoutService {
         if (workouts == null || workouts.size() != 7) {
             return false;
         }
-        Instant latest = workouts.stream().map(Workout::getCreatedAt).max(Instant::compareTo).orElse(null);
-        return isAiFresh(latest);
+        Set<String> daySet = new HashSet<>();
+        for (Workout w : workouts) {
+            if (w.getDayOfWeek() == null || w.getDayOfWeek().isBlank() || w.getName() == null || w.getName().isBlank()) {
+                return false;
+            }
+            daySet.add(w.getDayOfWeek());
+        }
+        return daySet.size() == 7;
     }
 
     private boolean isAiFresh(Instant createdAt) {
