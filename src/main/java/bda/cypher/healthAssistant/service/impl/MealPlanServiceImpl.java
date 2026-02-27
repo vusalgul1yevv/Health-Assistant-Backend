@@ -59,6 +59,7 @@ public class MealPlanServiceImpl implements MealPlanService {
     private final boolean aiEnabled;
     private final long aiTimeoutMs;
     private final long aiCacheTtlHours;
+    private final int aiMaxTokens;
     private final ConcurrentHashMap<String, CompletableFuture<Void>> aiInFlight = new ConcurrentHashMap<>();
 
     public MealPlanServiceImpl(MealPlanRepository mealPlanRepository,
@@ -71,7 +72,8 @@ public class MealPlanServiceImpl implements MealPlanService {
                                @Value("${ai.groq.enabled:false}") boolean aiEnabled,
                                @Value("${ai.groq.timeout-ms:10000}") long aiTimeoutMs,
                                @Value("${ai.groq.parallel-limit:5}") int aiParallelLimit,
-                               @Value("${ai.groq.cache-ttl-hours:24}") long aiCacheTtlHours) {
+                               @Value("${ai.groq.cache-ttl-hours:24}") long aiCacheTtlHours,
+                               @Value("${ai.groq.max-tokens:2600}") int aiMaxTokens) {
         this.mealPlanRepository = mealPlanRepository;
         this.userRepository = userRepository;
         this.shoppingListRepository = shoppingListRepository;
@@ -82,6 +84,7 @@ public class MealPlanServiceImpl implements MealPlanService {
         this.aiEnabled = aiEnabled;
         this.aiTimeoutMs = aiTimeoutMs;
         this.aiCacheTtlHours = aiCacheTtlHours;
+        this.aiMaxTokens = aiMaxTokens;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(Math.max(aiTimeoutMs, 1000)))
                 .build();
@@ -323,6 +326,11 @@ public class MealPlanServiceImpl implements MealPlanService {
         plan.getDays().clear();
         plan.getDays().addAll(mapDays(plan, days));
         mealPlanRepository.save(plan);
+        List<ShoppingCategoryPayload> categories = parseAiShoppingList(content);
+        if (categories != null && !categories.isEmpty()) {
+            updateShoppingListFromCategories(user, weekStart, categories);
+            return;
+        }
         List<Ingredient> ingredients = parseAiIngredients(content);
         if (ingredients != null && !ingredients.isEmpty()) {
             updateShoppingListFromIngredients(user, weekStart, ingredients);
@@ -339,14 +347,15 @@ public class MealPlanServiceImpl implements MealPlanService {
                 ? user.getHealthCondition().getCategory().getName() : null;
         String severity = user.getSeverity();
         StringBuilder builder = new StringBuilder();
-        builder.append("Create a 7-day meal plan as JSON only. ")
-                .append("Format: {\"days\":[{\"dayOfWeek\":\"Mon\",\"meals\":[{\"mealType\":\"Breakfast\",\"title\":\"...\",\"time\":\"07:00 AM\"},")
-                .append("{\"mealType\":\"Lunch\",\"title\":\"...\",\"time\":\"12:00 PM\"},")
-                .append("{\"mealType\":\"Dinner\",\"title\":\"...\",\"time\":\"06:00 PM\"}]}]} ");
-        builder.append("Use dayOfWeek values Mon, Tue, Wed, Thu, Fri, Sat, Sun. ");
-        builder.append("Use mealType values Breakfast, Lunch, Dinner. ");
-        builder.append("Each meal must include an 'ingredients' array with objects: ")
-                .append("{\"name\":\"...\",\"quantity\":\"...\",\"category\":\"Taxıllar|Meyvələr|Tərəvəzlər|Süd məhsulları|Ət/Balıq|Qoz-fındıq|İçkilər|Şirniyyatlar|Digər\"}. ");
+        builder.append("Return ONLY raw JSON (no markdown, no code fences). ");
+        builder.append("Return EXACTLY 7 days using dayOfWeek: Mon,Tue,Wed,Thu,Fri,Sat,Sun. ");
+        builder.append("Each day must have EXACTLY 3 meals: Breakfast,Lunch,Dinner. ");
+        builder.append("Each meal MUST include: mealType, title (non-empty), time. ");
+        builder.append("Also return a weekly shoppingList with categories and items (name, quantity). ");
+        builder.append("Categories must be one of: Taxıllar, Meyvələr, Tərəvəzlər, Süd məhsulları, Ət/Balıq, Qoz-fındıq, İçkilər, Şirniyyatlar, Digər. ");
+        builder.append("Keep everything short and compact. ");
+        builder.append("Format: {\"days\":[{\"dayOfWeek\":\"Mon\",\"meals\":[{\"mealType\":\"Breakfast\",\"title\":\"...\",\"time\":\"07:00 AM\"}]}],")
+                .append("\"shoppingList\":{\"categories\":[{\"name\":\"Taxıllar\",\"items\":[{\"name\":\"...\",\"quantity\":\"...\"}]}]}}. ");
         builder.append("Week start: ").append(weekStart).append(". ");
         if (age != null) {
             builder.append("Age: ").append(age).append(". ");
@@ -370,6 +379,41 @@ public class MealPlanServiceImpl implements MealPlanService {
             builder.append("Severity: ").append(severity).append(". ");
         }
         return builder.toString();
+    }
+
+    private List<ShoppingCategoryPayload> parseAiShoppingList(String content) {
+        try {
+            String json = extractJson(content);
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode categoriesNode = root.path("shoppingList").path("categories");
+            if (categoriesNode == null || !categoriesNode.isArray()) {
+                return List.of();
+            }
+            List<ShoppingCategoryPayload> categories = new ArrayList<>();
+            for (JsonNode catNode : categoriesNode) {
+                String name = catNode.path("name").asText(null);
+                String normalized = normalizeCategory(name);
+                JsonNode itemsNode = catNode.path("items");
+                if (itemsNode == null || !itemsNode.isArray()) {
+                    continue;
+                }
+                List<ShoppingItemPayload> items = new ArrayList<>();
+                for (JsonNode itemNode : itemsNode) {
+                    String itemName = itemNode.path("name").asText(null);
+                    String quantity = itemNode.path("quantity").asText(null);
+                    if (itemName == null || itemName.isBlank()) {
+                        continue;
+                    }
+                    items.add(new ShoppingItemPayload(itemName.trim(), quantity == null ? "" : quantity.trim()));
+                }
+                if (!items.isEmpty()) {
+                    categories.add(new ShoppingCategoryPayload(normalized, items));
+                }
+            }
+            return categories;
+        } catch (Exception ex) {
+            return List.of();
+        }
     }
 
     private List<Ingredient> parseAiIngredients(String content) {
@@ -459,6 +503,38 @@ public class MealPlanServiceImpl implements MealPlanService {
         shoppingListRepository.save(list);
     }
 
+    private void updateShoppingListFromCategories(User user, LocalDate weekStart, List<ShoppingCategoryPayload> categories) {
+        ShoppingList list = shoppingListRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
+                .orElseGet(() -> {
+                    ShoppingList l = new ShoppingList();
+                    l.setUser(user);
+                    l.setWeekStart(weekStart);
+                    l.setCreatedAt(Instant.now());
+                    return l;
+                });
+        list.getCategories().clear();
+        for (ShoppingCategoryPayload cat : categories) {
+            ShoppingCategory sc = new ShoppingCategory();
+            sc.setShoppingList(list);
+            sc.setName(normalizeCategory(cat.name));
+            for (ShoppingItemPayload item : cat.items) {
+                if (item.name == null || item.name.isBlank()) {
+                    continue;
+                }
+                ShoppingItem si = new ShoppingItem();
+                si.setCategory(sc);
+                si.setName(item.name.trim());
+                si.setQuantity(item.quantity == null ? "" : item.quantity.trim());
+                si.setChecked(false);
+                sc.getItems().add(si);
+            }
+            if (!sc.getItems().isEmpty()) {
+                list.getCategories().add(sc);
+            }
+        }
+        shoppingListRepository.save(list);
+    }
+
     private static class Ingredient {
         final String name;
         final String quantity;
@@ -469,12 +545,30 @@ public class MealPlanServiceImpl implements MealPlanService {
             this.category = category;
         }
     }
+
+    private static class ShoppingCategoryPayload {
+        final String name;
+        final List<ShoppingItemPayload> items;
+        ShoppingCategoryPayload(String name, List<ShoppingItemPayload> items) {
+            this.name = name;
+            this.items = items;
+        }
+    }
+
+    private static class ShoppingItemPayload {
+        final String name;
+        final String quantity;
+        ShoppingItemPayload(String name, String quantity) {
+            this.name = name;
+            this.quantity = quantity;
+        }
+    }
     private String callGroq(String prompt) {
         try {
             Map<String, Object> body = Map.of(
                     "model", aiModel,
                     "temperature", 0.4,
-                    "max_tokens", 1200,
+                    "max_tokens", aiMaxTokens,
                     "messages", List.of(
                             Map.of("role", "system", "content", "Return only JSON without markdown."),
                             Map.of("role", "user", "content", prompt)
