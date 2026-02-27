@@ -111,13 +111,23 @@ public class MealPlanServiceImpl implements MealPlanService {
     @Override
     @Transactional
     public MealPlanResponseDTO getAiPlanByWeekStart(String userEmail, LocalDate weekStart) {
+        return getAiPlanByWeekStart(userEmail, weekStart, false);
+    }
+
+    @Override
+    @Transactional
+    public MealPlanResponseDTO getAiPlanByWeekStart(String userEmail, LocalDate weekStart, boolean force) {
         User user = getUser(userEmail);
         LocalDate targetWeek = weekStart != null ? weekStart : currentWeekStart();
         MealPlan aiPlan = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), targetWeek, "ai")
-                .filter(plan -> isAiFresh(plan.getCreatedAt()))
+                .filter(plan -> !force && isAiFresh(plan.getCreatedAt()))
                 .orElse(null);
         if (aiPlan != null) {
             return mapToDTO(aiPlan);
+        }
+        if (force) {
+            mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), targetWeek, "ai")
+                    .ifPresent(mealPlanRepository::delete);
         }
         triggerAiGeneration(user, targetWeek);
         MealPlan corePlan = getOrCreateCorePlan(user, targetWeek);
