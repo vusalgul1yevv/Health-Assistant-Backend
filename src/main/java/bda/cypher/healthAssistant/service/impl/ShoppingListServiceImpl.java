@@ -11,6 +11,7 @@ import bda.cypher.healthAssistant.entity.ShoppingList;
 import bda.cypher.healthAssistant.entity.User;
 import bda.cypher.healthAssistant.repository.ShoppingListRepository;
 import bda.cypher.healthAssistant.repository.UserRepository;
+import bda.cypher.healthAssistant.service.MealPlanService;
 import bda.cypher.healthAssistant.service.ShoppingListService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,10 +30,12 @@ import java.util.stream.Collectors;
 public class ShoppingListServiceImpl implements ShoppingListService {
     private final ShoppingListRepository shoppingListRepository;
     private final UserRepository userRepository;
+    private final MealPlanService mealPlanService;
 
-    public ShoppingListServiceImpl(ShoppingListRepository shoppingListRepository, UserRepository userRepository) {
+    public ShoppingListServiceImpl(ShoppingListRepository shoppingListRepository, UserRepository userRepository, MealPlanService mealPlanService) {
         this.shoppingListRepository = shoppingListRepository;
         this.userRepository = userRepository;
+        this.mealPlanService = mealPlanService;
     }
 
     @Override
@@ -42,6 +45,7 @@ public class ShoppingListServiceImpl implements ShoppingListService {
         LocalDate weekStart = currentWeekStart();
         ShoppingList list = shoppingListRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
                 .orElseGet(() -> shoppingListRepository.save(createDefaultList(user, weekStart)));
+        ensureAiShoppingList(userEmail, weekStart, list);
         return mapToDTO(list, null);
     }
 
@@ -57,6 +61,7 @@ public class ShoppingListServiceImpl implements ShoppingListService {
         User user = getUser(userEmail);
         ShoppingList list = shoppingListRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
                 .orElseGet(() -> shoppingListRepository.save(createDefaultList(user, weekStart)));
+        ensureAiShoppingList(userEmail, weekStart, list);
         return mapToDTO(list, normalizeDay(dayOfWeek));
     }
 
@@ -139,6 +144,17 @@ public class ShoppingListServiceImpl implements ShoppingListService {
                 .flatMap(category -> category.getItems().stream())
                 .filter(item -> id.equals(item.getId()))
                 .findFirst();
+    }
+
+    private void ensureAiShoppingList(String userEmail, LocalDate weekStart, ShoppingList list) {
+        if (list == null || weekStart == null || hasItems(list)) {
+            return;
+        }
+        mealPlanService.getAiPlanByWeekStart(userEmail, weekStart, false);
+    }
+
+    private boolean hasItems(ShoppingList list) {
+        return list.getCategories().stream().anyMatch(category -> category.getItems() != null && !category.getItems().isEmpty());
     }
 
     private ShoppingListResponseDTO mapToDTO(ShoppingList list, String dayOfWeek) {
