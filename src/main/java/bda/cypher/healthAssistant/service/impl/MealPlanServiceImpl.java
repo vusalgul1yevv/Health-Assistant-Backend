@@ -10,8 +10,12 @@ import bda.cypher.healthAssistant.entity.MealPlanDay;
 import bda.cypher.healthAssistant.entity.MealPlanMeal;
 import bda.cypher.healthAssistant.entity.User;
 import bda.cypher.healthAssistant.repository.MealPlanRepository;
+import bda.cypher.healthAssistant.repository.ShoppingListRepository;
 import bda.cypher.healthAssistant.repository.UserRepository;
 import bda.cypher.healthAssistant.service.MealPlanService;
+import bda.cypher.healthAssistant.entity.ShoppingList;
+import bda.cypher.healthAssistant.entity.ShoppingCategory;
+import bda.cypher.healthAssistant.entity.ShoppingItem;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
@@ -45,6 +49,7 @@ import java.util.stream.Collectors;
 public class MealPlanServiceImpl implements MealPlanService {
     private final MealPlanRepository mealPlanRepository;
     private final UserRepository userRepository;
+    private final ShoppingListRepository shoppingListRepository;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final ExecutorService aiExecutor;
@@ -58,6 +63,7 @@ public class MealPlanServiceImpl implements MealPlanService {
 
     public MealPlanServiceImpl(MealPlanRepository mealPlanRepository,
                                UserRepository userRepository,
+                               ShoppingListRepository shoppingListRepository,
                                ObjectMapper objectMapper,
                                @Value("${ai.groq.base-url:https://api.groq.com/openai/v1/chat/completions}") String aiBaseUrl,
                                @Value("${ai.groq.model:}") String aiModel,
@@ -68,6 +74,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                                @Value("${ai.groq.cache-ttl-hours:24}") long aiCacheTtlHours) {
         this.mealPlanRepository = mealPlanRepository;
         this.userRepository = userRepository;
+        this.shoppingListRepository = shoppingListRepository;
         this.objectMapper = objectMapper;
         this.aiBaseUrl = aiBaseUrl;
         this.aiModel = aiModel;
@@ -316,6 +323,10 @@ public class MealPlanServiceImpl implements MealPlanService {
         plan.getDays().clear();
         plan.getDays().addAll(mapDays(plan, days));
         mealPlanRepository.save(plan);
+        List<Ingredient> ingredients = parseAiIngredients(content);
+        if (ingredients != null && !ingredients.isEmpty()) {
+            updateShoppingListFromIngredients(user, weekStart, ingredients);
+        }
     }
 
     private String buildAiPrompt(User user, LocalDate weekStart) {
@@ -334,6 +345,8 @@ public class MealPlanServiceImpl implements MealPlanService {
                 .append("{\"mealType\":\"Dinner\",\"title\":\"...\",\"time\":\"06:00 PM\"}]}]} ");
         builder.append("Use dayOfWeek values Mon, Tue, Wed, Thu, Fri, Sat, Sun. ");
         builder.append("Use mealType values Breakfast, Lunch, Dinner. ");
+        builder.append("Each meal must include an 'ingredients' array with objects: ")
+                .append("{\"name\":\"...\",\"quantity\":\"...\",\"category\":\"Taxıllar|Meyvələr|Tərəvəzlər|Süd məhsulları|Ət/Balıq|Qoz-fındıq|İçkilər|Şirniyyatlar|Digər\"}. ");
         builder.append("Week start: ").append(weekStart).append(". ");
         if (age != null) {
             builder.append("Age: ").append(age).append(". ");
@@ -359,6 +372,103 @@ public class MealPlanServiceImpl implements MealPlanService {
         return builder.toString();
     }
 
+    private List<Ingredient> parseAiIngredients(String content) {
+        try {
+            String json = extractJson(content);
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode daysNode = root.get("days");
+            if (daysNode == null || !daysNode.isArray()) {
+                return List.of();
+            }
+            List<Ingredient> result = new ArrayList<>();
+            for (JsonNode dayNode : daysNode) {
+                JsonNode mealsNode = dayNode.get("meals");
+                if (mealsNode != null && mealsNode.isArray()) {
+                    for (JsonNode mealNode : mealsNode) {
+                        JsonNode ingNode = mealNode.get("ingredients");
+                        if (ingNode != null && ingNode.isArray()) {
+                            for (JsonNode i : ingNode) {
+                                String name = i.path("name").asText(null);
+                                String quantity = i.path("quantity").asText(null);
+                                String category = i.path("category").asText(null);
+                                if (name != null && !name.isBlank()) {
+                                    result.add(new Ingredient(name.trim(),
+                                            quantity == null ? "" : quantity.trim(),
+                                            normalizeCategory(category)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return result;
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
+    private String normalizeCategory(String category) {
+        if (category == null) return "Digər";
+        String v = category.trim().toLowerCase();
+        if (v.contains("tax")) return "Taxıllar";
+        if (v.contains("meyv")) return "Meyvələr";
+        if (v.contains("tərəv") || v.contains("terevez")) return "Tərəvəzlər";
+        if (v.contains("süd") || v.contains("milk") || v.contains("dairy")) return "Süd məhsulları";
+        if (v.contains("ət") || v.contains("balıq") || v.contains("meat") || v.contains("fish")) return "Ət/Balıq";
+        if (v.contains("qoz") || v.contains("fındıq") || v.contains("nut")) return "Qoz-fındıq";
+        if (v.contains("içki") || v.contains("drink")) return "İçkilər";
+        if (v.contains("şirn") || v.contains("sweet") || v.contains("dessert")) return "Şirniyyatlar";
+        return "Digər";
+    }
+
+    private void updateShoppingListFromIngredients(User user, LocalDate weekStart, List<Ingredient> ingredients) {
+        ShoppingList list = shoppingListRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
+                .orElseGet(() -> {
+                    ShoppingList l = new ShoppingList();
+                    l.setUser(user);
+                    l.setWeekStart(weekStart);
+                    l.setCreatedAt(Instant.now());
+                    return l;
+                });
+        list.getCategories().clear();
+        Map<String, Map<String, String>> agg = new java.util.LinkedHashMap<>();
+        for (Ingredient ing : ingredients) {
+            agg.computeIfAbsent(ing.category, k -> new java.util.LinkedHashMap<>());
+            Map<String, String> items = agg.get(ing.category);
+            if (items.containsKey(ing.name) && !ing.quantity.isBlank()) {
+                String prev = items.get(ing.name);
+                items.put(ing.name, prev.isBlank() ? ing.quantity : prev + " + " + ing.quantity);
+            } else {
+                items.putIfAbsent(ing.name, ing.quantity);
+            }
+        }
+        for (Map.Entry<String, Map<String, String>> cat : agg.entrySet()) {
+            ShoppingCategory sc = new ShoppingCategory();
+            sc.setShoppingList(list);
+            sc.setName(cat.getKey());
+            for (Map.Entry<String, String> item : cat.getValue().entrySet()) {
+                ShoppingItem si = new ShoppingItem();
+                si.setCategory(sc);
+                si.setName(item.getKey());
+                si.setQuantity(item.getValue());
+                si.setChecked(false);
+                sc.getItems().add(si);
+            }
+            list.getCategories().add(sc);
+        }
+        shoppingListRepository.save(list);
+    }
+
+    private static class Ingredient {
+        final String name;
+        final String quantity;
+        final String category;
+        Ingredient(String name, String quantity, String category) {
+            this.name = name;
+            this.quantity = quantity;
+            this.category = category;
+        }
+    }
     private String callGroq(String prompt) {
         try {
             Map<String, Object> body = Map.of(
