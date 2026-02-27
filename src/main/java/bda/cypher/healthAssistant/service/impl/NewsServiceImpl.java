@@ -95,13 +95,14 @@ public class NewsServiceImpl implements NewsService {
             if (queries.isEmpty()) {
                 queries.add("health");
             }
-            return loadByQueries(queries);
+            return filterResults(loadByQueries(queries), queries);
         }
         Map<String, NewsItemResponseDTO> deduped = new HashMap<>();
         for (Keyword keyword : user.getKeywords()) {
             mergeResults(deduped, keyword.getKeyword());
         }
-        return new ArrayList<>(deduped.values());
+        return filterResults(new ArrayList<>(deduped.values()),
+                user.getKeywords().stream().map(Keyword::getKeyword).collect(Collectors.toList()));
     }
 
     @Override
@@ -263,6 +264,38 @@ public class NewsServiceImpl implements NewsService {
             mergeResults(deduped, query);
         }
         return new ArrayList<>(deduped.values());
+    }
+
+    private List<NewsItemResponseDTO> filterResults(List<NewsItemResponseDTO> items, List<String> keywords) {
+        if (keywords == null || keywords.isEmpty()) {
+            return items;
+        }
+        List<String> normalized = keywords.stream()
+                .filter(k -> k != null && !k.isBlank())
+                .map(k -> k.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toList());
+        if (normalized.isEmpty()) {
+            return items;
+        }
+        List<NewsItemResponseDTO> filtered = new ArrayList<>();
+        for (NewsItemResponseDTO item : items) {
+            String title = item.getTitle();
+            if (title == null) {
+                continue;
+            }
+            String lower = title.toLowerCase(Locale.ROOT);
+            boolean match = false;
+            for (String key : normalized) {
+                if (lower.contains(key)) {
+                    match = true;
+                    break;
+                }
+            }
+            if (match) {
+                filtered.add(item);
+            }
+        }
+        return filtered;
     }
 
     private void mergeResults(Map<String, NewsItemResponseDTO> deduped, String query) {
