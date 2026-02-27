@@ -22,6 +22,8 @@ public class ShoppingItem {
 
     private String quantity;
 
+    private String dayOfWeek;
+
     @Column(nullable = false)
     private boolean checked;
 
@@ -51,6 +53,14 @@ public class ShoppingItem {
 
     public void setQuantity(String quantity) {
         this.quantity = quantity;
+    }
+
+    public String getDayOfWeek() {
+        return dayOfWeek;
+    }
+
+    public void setDayOfWeek(String dayOfWeek) {
+        this.dayOfWeek = dayOfWeek;
     }
 
     public boolean isChecked() {

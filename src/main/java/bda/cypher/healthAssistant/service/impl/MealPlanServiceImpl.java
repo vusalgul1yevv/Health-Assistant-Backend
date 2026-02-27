@@ -362,11 +362,11 @@ public class MealPlanServiceImpl implements MealPlanService {
         builder.append("Return EXACTLY 7 days using dayOfWeek: Mon,Tue,Wed,Thu,Fri,Sat,Sun. ");
         builder.append("Each day must have EXACTLY 3 meals: Breakfast,Lunch,Dinner. ");
         builder.append("Each meal MUST include: mealType, title (non-empty), time. ");
-        builder.append("Also return a weekly shoppingList with categories and items (name, quantity). ");
+        builder.append("Also return a day-specific shoppingListDaily for each day (Mon..Sun). ");
         builder.append("Categories must be one of: Taxıllar, Meyvələr, Tərəvəzlər, Süd məhsulları, Ət/Balıq, Qoz-fındıq, İçkilər, Şirniyyatlar, Digər. ");
         builder.append("Keep everything short and compact. ");
         builder.append("Format: {\"days\":[{\"dayOfWeek\":\"Mon\",\"meals\":[{\"mealType\":\"Breakfast\",\"title\":\"...\",\"time\":\"07:00 AM\"}]}],")
-                .append("\"shoppingList\":{\"categories\":[{\"name\":\"Taxıllar\",\"items\":[{\"name\":\"...\",\"quantity\":\"...\"}]}]}}. ");
+                .append("\"shoppingListDaily\":[{\"dayOfWeek\":\"Mon\",\"categories\":[{\"name\":\"Taxıllar\",\"items\":[{\"name\":\"...\",\"quantity\":\"...\"}]}]}]}. ");
         builder.append("Week start: ").append(weekStart).append(". ");
         if (age != null) {
             builder.append("Age: ").append(age).append(". ");
@@ -396,29 +396,59 @@ public class MealPlanServiceImpl implements MealPlanService {
         try {
             String json = extractJson(content);
             JsonNode root = objectMapper.readTree(json);
-            JsonNode categoriesNode = root.path("shoppingList").path("categories");
-            if (categoriesNode == null || !categoriesNode.isArray()) {
-                return List.of();
-            }
             List<ShoppingCategoryPayload> categories = new ArrayList<>();
-            for (JsonNode catNode : categoriesNode) {
-                String name = catNode.path("name").asText(null);
-                String normalized = normalizeCategory(name);
-                JsonNode itemsNode = catNode.path("items");
-                if (itemsNode == null || !itemsNode.isArray()) {
-                    continue;
-                }
-                List<ShoppingItemPayload> items = new ArrayList<>();
-                for (JsonNode itemNode : itemsNode) {
-                    String itemName = itemNode.path("name").asText(null);
-                    String quantity = itemNode.path("quantity").asText(null);
-                    if (itemName == null || itemName.isBlank()) {
+            JsonNode dailyNode = root.get("shoppingListDaily");
+            if (dailyNode != null && dailyNode.isArray()) {
+                for (JsonNode dayNode : dailyNode) {
+                    String day = normalizeDay(dayNode.path("dayOfWeek").asText(null));
+                    JsonNode catsNode = dayNode.path("categories");
+                    if (day == null || catsNode == null || !catsNode.isArray()) {
                         continue;
                     }
-                    items.add(new ShoppingItemPayload(itemName.trim(), quantity == null ? "" : quantity.trim()));
+                    for (JsonNode catNode : catsNode) {
+                        String name = catNode.path("name").asText(null);
+                        String normalized = normalizeCategory(name);
+                        JsonNode itemsNode = catNode.path("items");
+                        if (itemsNode == null || !itemsNode.isArray()) {
+                            continue;
+                        }
+                        List<ShoppingItemPayload> items = new ArrayList<>();
+                        for (JsonNode itemNode : itemsNode) {
+                            String itemName = itemNode.path("name").asText(null);
+                            String quantity = itemNode.path("quantity").asText(null);
+                            if (itemName == null || itemName.isBlank()) {
+                                continue;
+                            }
+                            items.add(new ShoppingItemPayload(day, itemName.trim(), quantity == null ? "" : quantity.trim()));
+                        }
+                        if (!items.isEmpty()) {
+                            categories.add(new ShoppingCategoryPayload(normalized, items));
+                        }
+                    }
                 }
-                if (!items.isEmpty()) {
-                    categories.add(new ShoppingCategoryPayload(normalized, items));
+                return categories;
+            }
+            JsonNode categoriesNode = root.path("shoppingList").path("categories");
+            if (categoriesNode != null && categoriesNode.isArray()) {
+                for (JsonNode catNode : categoriesNode) {
+                    String name = catNode.path("name").asText(null);
+                    String normalized = normalizeCategory(name);
+                    JsonNode itemsNode = catNode.path("items");
+                    if (itemsNode == null || !itemsNode.isArray()) {
+                        continue;
+                    }
+                    List<ShoppingItemPayload> items = new ArrayList<>();
+                    for (JsonNode itemNode : itemsNode) {
+                        String itemName = itemNode.path("name").asText(null);
+                        String quantity = itemNode.path("quantity").asText(null);
+                        if (itemName == null || itemName.isBlank()) {
+                            continue;
+                        }
+                        items.add(new ShoppingItemPayload(null, itemName.trim(), quantity == null ? "" : quantity.trim()));
+                    }
+                    if (!items.isEmpty()) {
+                        categories.add(new ShoppingCategoryPayload(normalized, items));
+                    }
                 }
             }
             return categories;
@@ -544,6 +574,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                 si.setCategory(sc);
                 si.setName(item.name.trim());
                 si.setQuantity(item.quantity == null ? "" : item.quantity.trim());
+                si.setDayOfWeek(item.dayOfWeek);
                 si.setChecked(false);
                 sc.getItems().add(si);
             }
@@ -575,9 +606,11 @@ public class MealPlanServiceImpl implements MealPlanService {
     }
 
     private static class ShoppingItemPayload {
+        final String dayOfWeek;
         final String name;
         final String quantity;
-        ShoppingItemPayload(String name, String quantity) {
+        ShoppingItemPayload(String dayOfWeek, String name, String quantity) {
+            this.dayOfWeek = dayOfWeek;
             this.name = name;
             this.quantity = quantity;
         }

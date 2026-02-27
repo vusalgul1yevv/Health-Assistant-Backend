@@ -32,11 +32,12 @@ public class ShoppingListController {
 
     @GetMapping
     public ResponseEntity<ShoppingListResponseDTO> getByWeekStart(@RequestParam(required = false) LocalDate weekStart,
+                                                                  @RequestParam(required = false) String dayOfWeek,
                                                                   Authentication authentication) {
         if (weekStart == null) {
             return ResponseEntity.ok(shoppingListService.getCurrentList(authentication.getName()));
         }
-        return ResponseEntity.ok(shoppingListService.getListByWeekStart(authentication.getName(), weekStart));
+        return ResponseEntity.ok(shoppingListService.getListByWeekStart(authentication.getName(), weekStart, dayOfWeek));
     }
 
     @PutMapping("/{id}/items")

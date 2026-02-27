@@ -42,16 +42,22 @@ public class ShoppingListServiceImpl implements ShoppingListService {
         LocalDate weekStart = currentWeekStart();
         ShoppingList list = shoppingListRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
                 .orElseGet(() -> shoppingListRepository.save(createDefaultList(user, weekStart)));
-        return mapToDTO(list);
+        return mapToDTO(list, null);
     }
 
     @Override
     @Transactional
     public ShoppingListResponseDTO getListByWeekStart(String userEmail, LocalDate weekStart) {
+        return getListByWeekStart(userEmail, weekStart, null);
+    }
+
+    @Override
+    @Transactional
+    public ShoppingListResponseDTO getListByWeekStart(String userEmail, LocalDate weekStart, String dayOfWeek) {
         User user = getUser(userEmail);
         ShoppingList list = shoppingListRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
                 .orElseGet(() -> shoppingListRepository.save(createDefaultList(user, weekStart)));
-        return mapToDTO(list);
+        return mapToDTO(list, normalizeDay(dayOfWeek));
     }
 
     @Override
@@ -73,7 +79,7 @@ public class ShoppingListServiceImpl implements ShoppingListService {
             }
         }
         ShoppingList saved = shoppingListRepository.save(list);
-        return mapToDTO(saved);
+        return mapToDTO(saved, null);
     }
 
     @Override
@@ -135,14 +141,16 @@ public class ShoppingListServiceImpl implements ShoppingListService {
                 .findFirst();
     }
 
-    private ShoppingListResponseDTO mapToDTO(ShoppingList list) {
+    private ShoppingListResponseDTO mapToDTO(ShoppingList list, String dayOfWeek) {
         ShoppingListResponseDTO dto = new ShoppingListResponseDTO();
         dto.setId(list.getId());
         dto.setWeekStart(list.getWeekStart());
         List<ShoppingCategoryDTO> categories = list.getCategories().stream().map(category -> {
             ShoppingCategoryDTO categoryDTO = new ShoppingCategoryDTO();
             categoryDTO.setName(category.getName());
-            List<ShoppingItemDTO> items = category.getItems().stream().map(item -> {
+            List<ShoppingItemDTO> items = category.getItems().stream()
+                    .filter(item -> dayOfWeek == null || item.getDayOfWeek() == null || dayOfWeek.equalsIgnoreCase(item.getDayOfWeek()))
+                    .map(item -> {
                 ShoppingItemDTO itemDTO = new ShoppingItemDTO();
                 itemDTO.setId(item.getId());
                 itemDTO.setName(item.getName());
@@ -155,5 +163,25 @@ public class ShoppingListServiceImpl implements ShoppingListService {
         }).collect(Collectors.toList());
         dto.setCategories(categories);
         return dto;
+    }
+
+    private String normalizeDay(String day) {
+        if (day == null) {
+            return null;
+        }
+        String value = day.trim().toLowerCase();
+        if (value.isBlank() || value.equals("all") || value.equals("week")) {
+            return null;
+        }
+        return switch (value) {
+            case "mon", "monday", "b.e", "be", "b.e." -> "Mon";
+            case "tue", "tues", "tuesday", "ç.a", "ca", "ç.a." -> "Tue";
+            case "wed", "wednesday", "ç", "c", "ç." -> "Wed";
+            case "thu", "thur", "thurs", "thursday", "c.a", "ca.", "c.a." -> "Thu";
+            case "fri", "friday", "cüm", "cum", "cüm." -> "Fri";
+            case "sat", "saturday", "ş", "s", "ş." -> "Sat";
+            case "sun", "sunday", "ba", "bazar" -> "Sun";
+            default -> null;
+        };
     }
 }
