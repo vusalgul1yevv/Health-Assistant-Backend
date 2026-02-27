@@ -27,6 +27,7 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -383,7 +384,7 @@ public class WorkoutServiceImpl implements WorkoutService {
             return false;
         }
         Set<String> daySet = new HashSet<>();
-        for (WorkoutPayload w : workouts) {
+         for (WorkoutPayload w : workouts) {
             if (w.dayOfWeek == null || w.name == null || w.name.isBlank()) {
                 return false;
             }
