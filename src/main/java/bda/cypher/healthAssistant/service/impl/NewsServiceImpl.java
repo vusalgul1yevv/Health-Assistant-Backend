@@ -237,10 +237,16 @@ public class NewsServiceImpl implements NewsService {
             if (link == null || link.isBlank()) {
                 continue;
             }
-            String domain = extractDomain(link);
-            if (!isAllowedDomain(domain)) {
-                continue;
+            String sourceUrl = null;
+            NodeList sourceNodes = item.getElementsByTagName("source");
+            if (sourceNodes.getLength() > 0) {
+                Element source = (Element) sourceNodes.item(0);
+                String urlAttr = source.getAttribute("url");
+                if (urlAttr != null && !urlAttr.isBlank()) {
+                    sourceUrl = urlAttr.trim();
+                }
             }
+            String domain = extractDomain(sourceUrl != null ? sourceUrl : link);
             NewsItemResponseDTO dto = new NewsItemResponseDTO();
             dto.setTitle(title);
             dto.setLink(link);
