@@ -164,6 +164,9 @@ public class UserServiceImpl implements UserService {
         if (keyword == null || keyword.isBlank()) {
             return;
         }
+        if (isIgnoredKeyword(keyword)) {
+            return;
+        }
         boolean alreadyLinked = user.getKeywords().stream()
                 .anyMatch(k -> k.getKeyword() != null && k.getKeyword().equalsIgnoreCase(keyword));
         if (alreadyLinked) {
@@ -189,6 +192,11 @@ public class UserServiceImpl implements UserService {
             return null;
         }
         return trimmed.toLowerCase(Locale.ROOT);
+    }
+
+    private boolean isIgnoredKeyword(String keyword) {
+        String normalized = normalizeKeyword(keyword);
+        return "digər".equals(normalized) || "other".equals(normalized);
     }
    
 }

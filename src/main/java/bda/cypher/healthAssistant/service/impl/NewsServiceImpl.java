@@ -156,6 +156,7 @@ public class NewsServiceImpl implements NewsService {
     public List<KeywordResponseDTO> getFollowingKeywords(String userEmail) {
         User user = getUser(userEmail);
         return user.getKeywords().stream()
+                .filter(k -> !isIgnoredKeyword(k.getKeyword()))
                 .map(this::mapKeyword)
                 .collect(Collectors.toList());
     }
@@ -272,6 +273,7 @@ public class NewsServiceImpl implements NewsService {
         }
         List<String> normalized = keywords.stream()
                 .filter(k -> k != null && !k.isBlank())
+                .filter(k -> !isIgnoredKeyword(k))
                 .map(k -> k.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toList());
         if (normalized.isEmpty()) {
@@ -296,6 +298,14 @@ public class NewsServiceImpl implements NewsService {
             }
         }
         return filtered;
+    }
+
+    private boolean isIgnoredKeyword(String keyword) {
+        if (keyword == null) {
+            return false;
+        }
+        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
+        return "digər".equals(normalized) || "other".equals(normalized);
     }
 
     private void mergeResults(Map<String, NewsItemResponseDTO> deduped, String query) {
