@@ -16,6 +16,9 @@ public class UserRegisterRequestDTO {
     @Size(min = 6, message = "Şifrə ən azı 6 simvol olmalıdır")
     private String password;
 
+    @NotBlank(message = "Email təsdiqi üçün token tələb olunur")
+    private String emailVerificationToken;
+
     @NotNull(message = "Doğum tarixi qeyd olunmalıdır")
     @Past(message = "Doğum tarixi keçmişdə olmalıdır")
     private LocalDate dateOfBirth;
@@ -49,6 +52,9 @@ public class UserRegisterRequestDTO {
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+
+    public String getEmailVerificationToken() { return emailVerificationToken; }
+    public void setEmailVerificationToken(String emailVerificationToken) { this.emailVerificationToken = emailVerificationToken; }
 
     public LocalDate getDateOfBirth() { return dateOfBirth; }
     public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }

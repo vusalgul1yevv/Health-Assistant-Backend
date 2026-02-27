@@ -46,6 +46,12 @@ public class MealPlanController {
         return ResponseEntity.ok(mealPlanService.getPlanById(authentication.getName(), id));
     }
 
+    @GetMapping("/ai")
+    public ResponseEntity<MealPlanResponseDTO> getAiPlan(@RequestParam(required = false) LocalDate weekStart,
+                                                         Authentication authentication) {
+        return ResponseEntity.ok(mealPlanService.getAiPlanByWeekStart(authentication.getName(), weekStart));
+    }
+
     @PostMapping("/generate")
     public ResponseEntity<MealPlanResponseDTO> generate(@Valid @RequestBody MealPlanGenerateRequestDTO request,
                                                         Authentication authentication) {

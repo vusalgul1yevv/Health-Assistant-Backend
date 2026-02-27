@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface MealPlanRepository extends JpaRepository<MealPlan, Long> {
     Optional<MealPlan> findByUserIdAndWeekStart(Long userId, LocalDate weekStart);
     Optional<MealPlan> findByIdAndUserId(Long id, Long userId);
+    Optional<MealPlan> findByUserIdAndWeekStartAndSource(Long userId, LocalDate weekStart, String source);
 }

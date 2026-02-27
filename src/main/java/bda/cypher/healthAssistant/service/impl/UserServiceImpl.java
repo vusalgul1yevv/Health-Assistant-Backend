@@ -10,6 +10,7 @@ import bda.cypher.healthAssistant.entity.HealthCondition;
 import bda.cypher.healthAssistant.entity.User;
 import bda.cypher.healthAssistant.repository.HealthConditionRepository;
 import bda.cypher.healthAssistant.repository.UserRepository;
+import bda.cypher.healthAssistant.service.EmailOtpService;
 import bda.cypher.healthAssistant.service.UserService;
 import lombok.RequiredArgsConstructor;
 
@@ -21,11 +22,14 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final HealthConditionRepository healthConditionRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailOtpService emailOtpService;
 
     public UserResponseDTO registerUser(UserRegisterRequestDTO request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email already exists");
         }
+
+        emailOtpService.consumeVerificationToken(request.getEmail(), request.getEmailVerificationToken());
 
         User user = new User();
         user.setFullName(request.getFullName());

@@ -12,26 +12,73 @@ import bda.cypher.healthAssistant.entity.User;
 import bda.cypher.healthAssistant.repository.MealPlanRepository;
 import bda.cypher.healthAssistant.repository.UserRepository;
 import bda.cypher.healthAssistant.service.MealPlanService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Period;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Service
 public class MealPlanServiceImpl implements MealPlanService {
     private final MealPlanRepository mealPlanRepository;
     private final UserRepository userRepository;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+    private final ExecutorService aiExecutor;
+    private final String aiBaseUrl;
+    private final String aiModel;
+    private final String aiApiKey;
+    private final boolean aiEnabled;
+    private final long aiTimeoutMs;
+    private final long aiCacheTtlHours;
+    private final ConcurrentHashMap<String, CompletableFuture<Void>> aiInFlight = new ConcurrentHashMap<>();
 
-    public MealPlanServiceImpl(MealPlanRepository mealPlanRepository, UserRepository userRepository) {
+    public MealPlanServiceImpl(MealPlanRepository mealPlanRepository,
+                               UserRepository userRepository,
+                               ObjectMapper objectMapper,
+                               @Value("${ai.groq.base-url:https://api.groq.com/openai/v1/chat/completions}") String aiBaseUrl,
+                               @Value("${ai.groq.model:}") String aiModel,
+                               @Value("${ai.groq.api-key:}") String aiApiKey,
+                               @Value("${ai.groq.enabled:false}") boolean aiEnabled,
+                               @Value("${ai.groq.timeout-ms:10000}") long aiTimeoutMs,
+                               @Value("${ai.groq.parallel-limit:5}") int aiParallelLimit,
+                               @Value("${ai.groq.cache-ttl-hours:24}") long aiCacheTtlHours) {
         this.mealPlanRepository = mealPlanRepository;
         this.userRepository = userRepository;
+        this.objectMapper = objectMapper;
+        this.aiBaseUrl = aiBaseUrl;
+        this.aiModel = aiModel;
+        this.aiApiKey = aiApiKey;
+        this.aiEnabled = aiEnabled;
+        this.aiTimeoutMs = aiTimeoutMs;
+        this.aiCacheTtlHours = aiCacheTtlHours;
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.max(aiTimeoutMs, 1000)))
+                .build();
+        this.aiExecutor = Executors.newFixedThreadPool(Math.max(aiParallelLimit, 1));
     }
 
     @Override
@@ -39,8 +86,7 @@ public class MealPlanServiceImpl implements MealPlanService {
     public MealPlanResponseDTO getCurrentPlan(String userEmail) {
         User user = getUser(userEmail);
         LocalDate weekStart = currentWeekStart();
-        MealPlan plan = mealPlanRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
-                .orElseGet(() -> mealPlanRepository.save(createDefaultPlan(user, weekStart, "default")));
+        MealPlan plan = getOrCreateCorePlan(user, weekStart);
         return mapToDTO(plan);
     }
 
@@ -48,9 +94,24 @@ public class MealPlanServiceImpl implements MealPlanService {
     @Transactional
     public MealPlanResponseDTO getPlanByWeekStart(String userEmail, LocalDate weekStart) {
         User user = getUser(userEmail);
-        MealPlan plan = mealPlanRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
-                .orElseGet(() -> mealPlanRepository.save(createDefaultPlan(user, weekStart, "default")));
+        MealPlan plan = getOrCreateCorePlan(user, weekStart);
         return mapToDTO(plan);
+    }
+
+    @Override
+    @Transactional
+    public MealPlanResponseDTO getAiPlanByWeekStart(String userEmail, LocalDate weekStart) {
+        User user = getUser(userEmail);
+        LocalDate targetWeek = weekStart != null ? weekStart : currentWeekStart();
+        MealPlan aiPlan = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), targetWeek, "ai")
+                .filter(plan -> isAiFresh(plan.getCreatedAt()))
+                .orElse(null);
+        if (aiPlan != null) {
+            return mapToDTO(aiPlan);
+        }
+        triggerAiGeneration(user, targetWeek);
+        MealPlan corePlan = getOrCreateCorePlan(user, targetWeek);
+        return mapToDTO(corePlan);
     }
 
     @Override
@@ -66,7 +127,7 @@ public class MealPlanServiceImpl implements MealPlanService {
     public MealPlanResponseDTO generatePlan(String userEmail, MealPlanGenerateRequestDTO request) {
         User user = getUser(userEmail);
         LocalDate weekStart = request.getWeekStart() != null ? request.getWeekStart() : currentWeekStart();
-        MealPlan plan = mealPlanRepository.findByUserIdAndWeekStart(user.getId(), weekStart)
+        MealPlan plan = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), weekStart, "generated")
                 .orElseGet(() -> createDefaultPlan(user, weekStart, "generated"));
         plan.setSource("generated");
         plan.setCreatedAt(Instant.now());
@@ -114,6 +175,20 @@ public class MealPlanServiceImpl implements MealPlanService {
     private User getUser(String userEmail) {
         return userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("User tapılmadı"));
+    }
+
+    private MealPlan getOrCreateCorePlan(User user, LocalDate weekStart) {
+        MealPlan generated = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), weekStart, "generated")
+                .orElse(null);
+        if (generated != null) {
+            return generated;
+        }
+        MealPlan defaultPlan = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), weekStart, "default")
+                .orElse(null);
+        if (defaultPlan != null) {
+            return defaultPlan;
+        }
+        return mealPlanRepository.save(createDefaultPlan(user, weekStart, "default"));
     }
 
     private LocalDate currentWeekStart() {
@@ -192,6 +267,7 @@ public class MealPlanServiceImpl implements MealPlanService {
         MealPlanResponseDTO dto = new MealPlanResponseDTO();
         dto.setId(plan.getId());
         dto.setWeekStart(plan.getWeekStart());
+        dto.setSource(plan.getSource());
         List<MealPlanDayDTO> days = plan.getDays().stream().map(day -> {
             MealPlanDayDTO dayDto = new MealPlanDayDTO();
             dayDto.setDayOfWeek(day.getDayOfWeek());
@@ -207,5 +283,233 @@ public class MealPlanServiceImpl implements MealPlanService {
         }).collect(Collectors.toList());
         dto.setDays(days);
         return dto;
+    }
+
+    private void triggerAiGeneration(User user, LocalDate weekStart) {
+        if (!aiEnabled || aiApiKey == null || aiApiKey.isBlank() || aiModel == null || aiModel.isBlank()) {
+            return;
+        }
+        String key = user.getId() + ":" + weekStart;
+        aiInFlight.computeIfAbsent(key, k -> CompletableFuture.runAsync(() -> {
+            try {
+                generateAiPlan(user, weekStart);
+            } finally {
+                aiInFlight.remove(k);
+            }
+        }, aiExecutor));
+    }
+
+    private void generateAiPlan(User user, LocalDate weekStart) {
+        String prompt = buildAiPrompt(user, weekStart);
+        String content = callGroq(prompt);
+        if (content == null || content.isBlank()) {
+            return;
+        }
+        List<MealPlanDayDTO> days = parseAiDays(content);
+        if (!isValidAiDays(days)) {
+            return;
+        }
+        MealPlan plan = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), weekStart, "ai")
+                .orElseGet(() -> createDefaultPlan(user, weekStart, "ai"));
+        plan.setSource("ai");
+        plan.setCreatedAt(Instant.now());
+        plan.getDays().clear();
+        plan.getDays().addAll(mapDays(plan, days));
+        mealPlanRepository.save(plan);
+    }
+
+    private String buildAiPrompt(User user, LocalDate weekStart) {
+        Integer age = user.getDateOfBirth() == null ? null : Period.between(user.getDateOfBirth(), LocalDate.now()).getYears();
+        String gender = user.getGender();
+        Double height = user.getHeight();
+        Double weight = user.getWeight();
+        String condition = user.getHealthCondition() != null ? user.getHealthCondition().getName() : null;
+        String category = user.getHealthCondition() != null && user.getHealthCondition().getCategory() != null
+                ? user.getHealthCondition().getCategory().getName() : null;
+        String severity = user.getSeverity();
+        StringBuilder builder = new StringBuilder();
+        builder.append("Create a 7-day meal plan as JSON only. ")
+                .append("Format: {\"days\":[{\"dayOfWeek\":\"Mon\",\"meals\":[{\"mealType\":\"Breakfast\",\"title\":\"...\",\"time\":\"07:00 AM\"},")
+                .append("{\"mealType\":\"Lunch\",\"title\":\"...\",\"time\":\"12:00 PM\"},")
+                .append("{\"mealType\":\"Dinner\",\"title\":\"...\",\"time\":\"06:00 PM\"}]}]} ");
+        builder.append("Use dayOfWeek values Mon, Tue, Wed, Thu, Fri, Sat, Sun. ");
+        builder.append("Use mealType values Breakfast, Lunch, Dinner. ");
+        builder.append("Week start: ").append(weekStart).append(". ");
+        if (age != null) {
+            builder.append("Age: ").append(age).append(". ");
+        }
+        if (gender != null && !gender.isBlank()) {
+            builder.append("Gender: ").append(gender).append(". ");
+        }
+        if (height != null) {
+            builder.append("HeightCm: ").append(height).append(". ");
+        }
+        if (weight != null) {
+            builder.append("WeightKg: ").append(weight).append(". ");
+        }
+        if (condition != null && !condition.isBlank()) {
+            builder.append("HealthCondition: ").append(condition).append(". ");
+        }
+        if (category != null && !category.isBlank()) {
+            builder.append("ConditionCategory: ").append(category).append(". ");
+        }
+        if (severity != null && !severity.isBlank()) {
+            builder.append("Severity: ").append(severity).append(". ");
+        }
+        return builder.toString();
+    }
+
+    private String callGroq(String prompt) {
+        try {
+            Map<String, Object> body = Map.of(
+                    "model", aiModel,
+                    "temperature", 0.4,
+                    "max_tokens", 1200,
+                    "messages", List.of(
+                            Map.of("role", "system", "content", "Return only JSON without markdown."),
+                            Map.of("role", "user", "content", prompt)
+                    )
+            );
+            String json = objectMapper.writeValueAsString(body);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(aiBaseUrl))
+                    .timeout(Duration.ofMillis(Math.max(aiTimeoutMs, 1000)))
+                    .header("Authorization", "Bearer " + aiApiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return null;
+            }
+            JsonNode root = objectMapper.readTree(response.body());
+            JsonNode contentNode = root.at("/choices/0/message/content");
+            return contentNode.isMissingNode() ? null : contentNode.asText();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private List<MealPlanDayDTO> parseAiDays(String content) {
+        try {
+            String json = extractJson(content);
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode daysNode = root.get("days");
+            if (daysNode == null || !daysNode.isArray()) {
+                return null;
+            }
+            List<MealPlanDayDTO> days = new ArrayList<>();
+            for (JsonNode dayNode : daysNode) {
+                String dayOfWeek = normalizeDay(dayNode.path("dayOfWeek").asText(null));
+                if (dayOfWeek == null) {
+                    continue;
+                }
+                List<MealPlanMealDTO> meals = new ArrayList<>();
+                JsonNode mealsNode = dayNode.get("meals");
+                if (mealsNode != null && mealsNode.isArray()) {
+                    for (JsonNode mealNode : mealsNode) {
+                        String mealType = normalizeMealType(mealNode.path("mealType").asText(null));
+                        String title = mealNode.path("title").asText(null);
+                        String time = mealNode.path("time").asText(null);
+                        if (mealType == null || title == null || title.isBlank()) {
+                            continue;
+                        }
+                        MealPlanMealDTO meal = new MealPlanMealDTO();
+                        meal.setMealType(mealType);
+                        meal.setTitle(title.trim());
+                        meal.setTime(time == null || time.isBlank() ? defaultTime(mealType) : time);
+                        meals.add(meal);
+                    }
+                }
+                MealPlanDayDTO day = new MealPlanDayDTO();
+                day.setDayOfWeek(dayOfWeek);
+                day.setMeals(meals);
+                days.add(day);
+            }
+            return days;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private boolean isValidAiDays(List<MealPlanDayDTO> days) {
+        if (days == null || days.size() != 7) {
+            return false;
+        }
+        Set<String> daySet = new HashSet<>();
+        for (MealPlanDayDTO day : days) {
+            if (day.getDayOfWeek() == null || day.getMeals() == null || day.getMeals().size() < 3) {
+                return false;
+            }
+            daySet.add(day.getDayOfWeek());
+        }
+        return daySet.size() == 7;
+    }
+
+    private String extractJson(String content) {
+        String trimmed = content.trim();
+        if (trimmed.startsWith("{")) {
+            return trimmed;
+        }
+        int start = trimmed.indexOf('{');
+        int end = trimmed.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            return trimmed.substring(start, end + 1);
+        }
+        return trimmed;
+    }
+
+    private String normalizeDay(String day) {
+        if (day == null) {
+            return null;
+        }
+        String value = day.trim().toLowerCase();
+        return switch (value) {
+            case "mon", "monday" -> "Mon";
+            case "tue", "tues", "tuesday" -> "Tue";
+            case "wed", "wednesday" -> "Wed";
+            case "thu", "thur", "thurs", "thursday" -> "Thu";
+            case "fri", "friday" -> "Fri";
+            case "sat", "saturday" -> "Sat";
+            case "sun", "sunday" -> "Sun";
+            default -> null;
+        };
+    }
+
+    private String normalizeMealType(String mealType) {
+        if (mealType == null) {
+            return null;
+        }
+        String value = mealType.trim().toLowerCase();
+        if (value.contains("breakfast")) {
+            return "Breakfast";
+        }
+        if (value.contains("lunch")) {
+            return "Lunch";
+        }
+        if (value.contains("dinner")) {
+            return "Dinner";
+        }
+        return null;
+    }
+
+    private String defaultTime(String mealType) {
+        return switch (mealType) {
+            case "Breakfast" -> "07:00 AM";
+            case "Lunch" -> "12:00 PM";
+            default -> "06:00 PM";
+        };
+    }
+
+    private boolean isAiFresh(Instant createdAt) {
+        if (createdAt == null || aiCacheTtlHours <= 0) {
+            return false;
+        }
+        return createdAt.isAfter(Instant.now().minus(Duration.ofHours(aiCacheTtlHours)));
+    }
+
+    @PreDestroy
+    public void shutdownAiExecutor() {
+        aiExecutor.shutdown();
     }
 }

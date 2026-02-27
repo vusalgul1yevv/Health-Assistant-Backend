@@ -7,6 +7,7 @@ import java.util.List;
 public class MealPlanResponseDTO {
     private Long id;
     private LocalDate weekStart;
+    private String source;
     private List<MealPlanDayDTO> days = new ArrayList<>();
 
     public Long getId() {
@@ -23,6 +24,14 @@ public class MealPlanResponseDTO {
 
     public void setWeekStart(LocalDate weekStart) {
         this.weekStart = weekStart;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
     }
 
     public List<MealPlanDayDTO> getDays() {

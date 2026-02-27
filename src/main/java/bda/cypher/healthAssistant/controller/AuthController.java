@@ -1,6 +1,10 @@
 package bda.cypher.healthAssistant.controller;
 
 import bda.cypher.healthAssistant.dto.AuthResponseDTO;
+import bda.cypher.healthAssistant.dto.EmailOtpSendRequestDTO;
+import bda.cypher.healthAssistant.dto.EmailOtpSendResponseDTO;
+import bda.cypher.healthAssistant.dto.EmailOtpVerifyRequestDTO;
+import bda.cypher.healthAssistant.dto.EmailOtpVerifyResponseDTO;
 import bda.cypher.healthAssistant.dto.ForgotPasswordRequestDTO;
 import bda.cypher.healthAssistant.dto.LoginRequestDTO;
 import bda.cypher.healthAssistant.dto.MessageResponseDTO;
@@ -10,6 +14,7 @@ import bda.cypher.healthAssistant.dto.UserRegisterRequestDTO;
 import bda.cypher.healthAssistant.dto.UserResponseDTO;
 import bda.cypher.healthAssistant.dto.UserUpdateRequestDTO;
 import bda.cypher.healthAssistant.service.AuthService;
+import bda.cypher.healthAssistant.service.EmailOtpService;
 import bda.cypher.healthAssistant.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +30,7 @@ public class AuthController {
 
     private final UserService userService;
     private final AuthService authService;
+    private final EmailOtpService emailOtpService;
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponseDTO> register(@Valid @RequestBody UserRegisterRequestDTO request) {
@@ -54,6 +60,20 @@ public class AuthController {
                                                     Authentication authentication) {
         UserResponseDTO user = userService.updateUser(authentication.getName(), request);
         return ResponseEntity.ok(user);
+    }
+
+    @PostMapping("/email/otp/send")
+    public ResponseEntity<EmailOtpSendResponseDTO> sendEmailOtp(@Valid @RequestBody EmailOtpSendRequestDTO request,
+                                                                HttpServletRequest httpRequest) {
+        String forwarded = httpRequest.getHeader("X-Forwarded-For");
+        String ip = forwarded != null && !forwarded.isBlank() ? forwarded.split(",")[0].trim() : httpRequest.getRemoteAddr();
+        String userAgent = httpRequest.getHeader("User-Agent");
+        return ResponseEntity.ok(emailOtpService.sendOtp(request.getEmail(), ip, userAgent));
+    }
+
+    @PostMapping("/email/otp/verify")
+    public ResponseEntity<EmailOtpVerifyResponseDTO> verifyEmailOtp(@Valid @RequestBody EmailOtpVerifyRequestDTO request) {
+        return ResponseEntity.ok(emailOtpService.verifyOtp(request.getVerificationId(), request.getOtp()));
     }
 
     @PostMapping("/forgot-password")

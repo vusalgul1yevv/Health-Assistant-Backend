@@ -48,4 +48,31 @@ public class SendGridMailService implements MailService {
             throw new RuntimeException("Email göndərilə bilmədi");
         }
     }
+
+    @Override
+    public void sendEmailOtp(String toEmail, String otp) {
+        if (sendGridApiKey == null || sendGridApiKey.isBlank() || mailFrom == null || mailFrom.isBlank()) {
+            throw new RuntimeException("Email konfigurasiya xətası");
+        }
+
+        Email from = new Email(mailFrom);
+        Email to = new Email(toEmail);
+        String subject = "Email təsdiq kodu";
+        Content content = new Content("text/plain", "OTP kodunuz: " + otp + " (5 dəqiqə etibarlıdır)");
+        Mail mail = new Mail(from, subject, to, content);
+
+        SendGrid sendGrid = new SendGrid(sendGridApiKey);
+        Request request = new Request();
+        try {
+            request.setMethod(Method.POST);
+            request.setEndpoint("mail/send");
+            request.setBody(mail.build());
+            Response response = sendGrid.api(request);
+            if (response.getStatusCode() >= 400) {
+                throw new RuntimeException("Email göndərilə bilmədi");
+            }
+        } catch (Exception ex) {
+            throw new RuntimeException("Email göndərilə bilmədi");
+        }
+    }
 }
