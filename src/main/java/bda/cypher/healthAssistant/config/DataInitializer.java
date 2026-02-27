@@ -125,13 +125,16 @@ public class DataInitializer implements CommandLineRunner {
                 return categoryTranslationRepository.save(translation);
             });
             for (ConditionPair pair : entry.getValue()) {
-                if (conditionRepository.findByNameAndCategoryId(pair.az(), category.getId()).isEmpty()) {
+                List<HealthCondition> matches = conditionRepository.findAllByNameAndCategoryId(pair.az(), category.getId());
+                if (matches.isEmpty()) {
                     HealthCondition condition = new HealthCondition();
                     condition.setName(pair.az());
                     condition.setCategory(category);
                     conditionRepository.save(condition);
                 }
-                HealthCondition condition = conditionRepository.findByNameAndCategoryId(pair.az(), category.getId()).orElse(null);
+                HealthCondition condition = matches.isEmpty()
+                        ? conditionRepository.findAllByNameAndCategoryId(pair.az(), category.getId()).stream().findFirst().orElse(null)
+                        : matches.get(0);
                 if (condition != null) {
                     conditionTranslationRepository.findByConditionId(condition.getId()).orElseGet(() -> {
                         HealthConditionTranslation translation = new HealthConditionTranslation();
