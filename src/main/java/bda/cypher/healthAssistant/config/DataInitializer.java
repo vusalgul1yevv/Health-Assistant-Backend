@@ -34,69 +34,59 @@ public class DataInitializer implements CommandLineRunner {
                 new ConditionPair("İskemik ürək xəstəliyi", "Ischemic heart disease"),
                 new ConditionPair("Ürək çatışmazlığı", "Heart failure"),
                 new ConditionPair("Aritmiya", "Arrhythmia"),
-                new ConditionPair("Ateroskleroz", "Atherosclerosis"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Ateroskleroz", "Atherosclerosis")
         ));
         conditionsByCategory.put("Tənəffüs sistemi", Arrays.asList(
                 new ConditionPair("Bronxial astma", "Bronchial asthma"),
                 new ConditionPair("Xroniki bronxit", "Chronic bronchitis"),
                 new ConditionPair("XOAX", "COPD"),
-                new ConditionPair("Allergik rinit", "Allergic rhinitis"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Allergik rinit", "Allergic rhinitis")
         ));
         conditionsByCategory.put("Endokrin və maddələr mübadiləsi", Arrays.asList(
                 new ConditionPair("Şəkərli diabet", "Diabetes mellitus"),
                 new ConditionPair("Hipotireoz", "Hypothyroidism"),
                 new ConditionPair("Hipertireoz", "Hyperthyroidism"),
                 new ConditionPair("Piylənmə", "Obesity"),
-                new ConditionPair("Metabolik sindrom", "Metabolic syndrome"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Metabolik sindrom", "Metabolic syndrome")
         ));
         conditionsByCategory.put("Sinir sistemi", Arrays.asList(
                 new ConditionPair("Epilepsiya", "Epilepsy"),
                 new ConditionPair("Migren", "Migraine"),
                 new ConditionPair("Parkinson", "Parkinson's disease"),
-                new ConditionPair("Dağınıq skleroz", "Multiple sclerosis"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Dağınıq skleroz", "Multiple sclerosis")
         ));
         conditionsByCategory.put("Əzələ–skelet sistemi", Arrays.asList(
                 new ConditionPair("Osteoxondroz", "Osteochondrosis"),
                 new ConditionPair("Artroz", "Osteoarthritis"),
                 new ConditionPair("Artrit", "Arthritis"),
                 new ConditionPair("Revmatoid artrit", "Rheumatoid arthritis"),
-                new ConditionPair("Osteoporoz", "Osteoporosis"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Osteoporoz", "Osteoporosis")
         ));
         conditionsByCategory.put("Həzm sistemi (mədə–bağırsaq)", Arrays.asList(
                 new ConditionPair("Xroniki qastrit", "Chronic gastritis"),
                 new ConditionPair("Xora", "Peptic ulcer"),
                 new ConditionPair("Pankreatit", "Pancreatitis"),
-                new ConditionPair("Qıcıqlanmış bağırsaq", "Irritable bowel syndrome"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Qıcıqlanmış bağırsaq", "Irritable bowel syndrome")
         ));
         conditionsByCategory.put("İmmun və autoimmun xəstəliklər", Arrays.asList(
                 new ConditionPair("Psoriaz", "Psoriasis"),
                 new ConditionPair("Qurdeşənəyi", "Urticaria"),
                 new ConditionPair("Kron", "Crohn's disease"),
-                new ConditionPair("Çölyak", "Celiac disease"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Çölyak", "Celiac disease")
         ));
         conditionsByCategory.put("Psixi pozuntular", Arrays.asList(
                 new ConditionPair("Depressiya", "Depression"),
                 new ConditionPair("Anksiyete", "Anxiety"),
-                new ConditionPair("Bipolyar", "Bipolar disorder"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Bipolyar", "Bipolar disorder")
         ));
         conditionsByCategory.put("Qan və qan yaradan orqanlar", Arrays.asList(
                 new ConditionPair("Anemiya", "Anemia"),
-                new ConditionPair("Talassemiya", "Thalassemia"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Talassemiya", "Thalassemia")
         ));
         conditionsByCategory.put("Böyrək və qaraciyər xəstəlikləri", Arrays.asList(
                 new ConditionPair("Böyrək çatışmazlığı", "Kidney failure"),
                 new ConditionPair("Hepatit", "Hepatitis"),
-                new ConditionPair("Sirroz", "Cirrhosis"),
-                new ConditionPair("Digər", "Other")
+                new ConditionPair("Sirroz", "Cirrhosis")
         ));
 
         Map<String, String> categoryTranslations = new LinkedHashMap<>();
