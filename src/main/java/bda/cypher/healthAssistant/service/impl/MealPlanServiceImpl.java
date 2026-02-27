@@ -380,11 +380,13 @@ public class MealPlanServiceImpl implements MealPlanService {
         builder.append("Use Azerbaijani characters (ə, ğ, ı, ö, ü, ç, ş). ");
         builder.append("Return EXACTLY 7 days using dayOfWeek: Mon,Tue,Wed,Thu,Fri,Sat,Sun. ");
         builder.append("Each day must have EXACTLY 3 meals: Breakfast,Lunch,Dinner. ");
-        builder.append("Each meal MUST include: mealType, title (non-empty), time. ");
-        builder.append("Also return a day-specific shoppingListDaily for each day (Mon..Sun). ");
+        builder.append("Each meal MUST include: mealType, title (non-empty), time, ingredients. ");
+        builder.append("Titles must be real dish names, not generic like 'Səhər yeməyi', 'Nahar', 'Şam'. ");
+        builder.append("Ingredients MUST be an array of {name, quantity, category}. ");
+        builder.append("Also return a day-specific shoppingListDaily for each day (Mon..Sun) based on ingredients. ");
         builder.append("Categories must be one of: Taxıllar, Meyvələr, Tərəvəzlər, Süd məhsulları, Ət/Balıq, Qoz-fındıq, İçkilər, Şirniyyatlar, Digər. ");
         builder.append("Keep everything short and compact. ");
-        builder.append("Format: {\"days\":[{\"dayOfWeek\":\"Mon\",\"meals\":[{\"mealType\":\"Breakfast\",\"title\":\"...\",\"time\":\"07:00 AM\"}]}],")
+        builder.append("Format: {\"days\":[{\"dayOfWeek\":\"Mon\",\"meals\":[{\"mealType\":\"Breakfast\",\"title\":\"...\",\"time\":\"07:00 AM\",\"ingredients\":[{\"name\":\"...\",\"quantity\":\"...\",\"category\":\"...\"}]}]}],")
                 .append("\"shoppingListDaily\":[{\"dayOfWeek\":\"Mon\",\"categories\":[{\"name\":\"Taxıllar\",\"items\":[{\"name\":\"...\",\"quantity\":\"...\"}]}]}]}. ");
         builder.append("Week start: ").append(weekStart).append(". ");
         if (age != null) {
@@ -549,6 +551,7 @@ public class MealPlanServiceImpl implements MealPlanService {
             }
             List<Ingredient> result = new ArrayList<>();
             for (JsonNode dayNode : daysNode) {
+                String day = normalizeDay(dayNode.path("dayOfWeek").asText(null));
                 JsonNode mealsNode = dayNode.get("meals");
                 if (mealsNode != null && mealsNode.isArray()) {
                     for (JsonNode mealNode : mealsNode) {
@@ -559,7 +562,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                                 String quantity = i.path("quantity").asText(null);
                                 String category = i.path("category").asText(null);
                                 if (name != null && !name.isBlank()) {
-                                    result.add(new Ingredient(name.trim(),
+                                    result.add(new Ingredient(day, name.trim(),
                                             quantity == null ? "" : quantity.trim(),
                                             normalizeCategory(category)));
                                 }
@@ -606,10 +609,13 @@ public class MealPlanServiceImpl implements MealPlanService {
                     return l;
                 });
         list.getCategories().clear();
-        Map<String, Map<String, String>> agg = new java.util.LinkedHashMap<>();
+        Map<String, Map<String, Map<String, String>>> agg = new java.util.LinkedHashMap<>();
         for (Ingredient ing : ingredients) {
+            String day = normalizeDay(ing.dayOfWeek);
             agg.computeIfAbsent(ing.category, k -> new java.util.LinkedHashMap<>());
-            Map<String, String> items = agg.get(ing.category);
+            Map<String, Map<String, String>> byDay = agg.get(ing.category);
+            byDay.computeIfAbsent(day, k -> new java.util.LinkedHashMap<>());
+            Map<String, String> items = byDay.get(day);
             if (items.containsKey(ing.name) && !ing.quantity.isBlank()) {
                 String prev = items.get(ing.name);
                 items.put(ing.name, prev.isBlank() ? ing.quantity : prev + " + " + ing.quantity);
@@ -617,17 +623,23 @@ public class MealPlanServiceImpl implements MealPlanService {
                 items.putIfAbsent(ing.name, ing.quantity);
             }
         }
-        for (Map.Entry<String, Map<String, String>> cat : agg.entrySet()) {
+        for (Map.Entry<String, Map<String, Map<String, String>>> cat : agg.entrySet()) {
             ShoppingCategory sc = new ShoppingCategory();
             sc.setShoppingList(list);
             sc.setName(cat.getKey());
-            for (Map.Entry<String, String> item : cat.getValue().entrySet()) {
-                ShoppingItem si = new ShoppingItem();
-                si.setCategory(sc);
-                si.setName(item.getKey());
-                si.setQuantity(item.getValue());
-                si.setChecked(false);
-                sc.getItems().add(si);
+            for (Map.Entry<String, Map<String, String>> dayEntry : cat.getValue().entrySet()) {
+                for (Map.Entry<String, String> item : dayEntry.getValue().entrySet()) {
+                    if (item.getKey() == null || item.getKey().isBlank()) {
+                        continue;
+                    }
+                    ShoppingItem si = new ShoppingItem();
+                    si.setCategory(sc);
+                    si.setName(item.getKey());
+                    si.setQuantity(item.getValue() == null ? "" : item.getValue());
+                    si.setDayOfWeek(dayEntry.getKey());
+                    si.setChecked(false);
+                    sc.getItems().add(si);
+                }
             }
             list.getCategories().add(sc);
         }
@@ -668,10 +680,12 @@ public class MealPlanServiceImpl implements MealPlanService {
     }
 
     private static class Ingredient {
+        final String dayOfWeek;
         final String name;
         final String quantity;
         final String category;
-        Ingredient(String name, String quantity, String category) {
+        Ingredient(String dayOfWeek, String name, String quantity, String category) {
+            this.dayOfWeek = dayOfWeek;
             this.name = name;
             this.quantity = quantity;
             this.category = category;
@@ -749,7 +763,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                         String mealType = normalizeMealType(mealNode.path("mealType").asText(null));
                         String title = mealNode.path("title").asText(null);
                         String time = mealNode.path("time").asText(null);
-                        if (mealType == null || title == null || title.isBlank()) {
+                        if (mealType == null || title == null || title.isBlank() || isGenericMealTitle(title)) {
                             continue;
                         }
                         MealPlanMealDTO meal = new MealPlanMealDTO();
@@ -779,9 +793,30 @@ public class MealPlanServiceImpl implements MealPlanService {
             if (day.getDayOfWeek() == null || day.getMeals() == null || day.getMeals().size() < 3) {
                 return false;
             }
+            for (MealPlanMealDTO meal : day.getMeals()) {
+                if (meal.getTitle() == null || meal.getTitle().isBlank() || isGenericMealTitle(meal.getTitle())) {
+                    return false;
+                }
+            }
             daySet.add(day.getDayOfWeek());
         }
         return daySet.size() == 7;
+    }
+
+    private boolean isGenericMealTitle(String title) {
+        if (title == null) {
+            return true;
+        }
+        String value = title.trim().toLowerCase(Locale.ROOT);
+        if (value.isBlank()) {
+            return true;
+        }
+        return value.equals("səhər") || value.equals("seher")
+                || value.equals("nahar") || value.equals("günorta") || value.equals("gunorta")
+                || value.equals("şam") || value.equals("sam")
+                || value.equals("yemək") || value.equals("yemek")
+                || value.equals("səhər yeməyi") || value.equals("seher yemeyi")
+                || value.equals("şam yeməyi") || value.equals("sam yemeyi");
     }
 
     private boolean isLikelyAzerbaijaniPlan(MealPlan plan) {
