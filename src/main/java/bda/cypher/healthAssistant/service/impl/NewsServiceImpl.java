@@ -68,9 +68,11 @@ public class NewsServiceImpl implements NewsService {
             List<String> queries = new ArrayList<>();
             if (conditionKeyword != null) {
                 queries.add(conditionKeyword);
+                ensureKeyword(user, conditionKeyword);
             }
             if (categoryKeyword != null && (conditionKeyword == null || !categoryKeyword.equalsIgnoreCase(conditionKeyword))) {
                 queries.add(categoryKeyword);
+                ensureKeyword(user, categoryKeyword);
             }
             if (queries.isEmpty()) {
                 queries.add("health");
@@ -198,6 +200,25 @@ public class NewsServiceImpl implements NewsService {
             return null;
         }
         return name.trim();
+    }
+
+    private void ensureKeyword(User user, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+        String normalized = normalizeKeyword(keyword);
+        Optional<Keyword> existing = keywordRepository.findByKeyword(normalized);
+        Keyword entity = existing.orElseGet(() -> {
+            Keyword k = new Keyword();
+            k.setKeyword(normalized);
+            return k;
+        });
+        if (!user.getKeywords().contains(entity)) {
+            user.getKeywords().add(entity);
+            entity.getUsers().add(user);
+            keywordRepository.save(entity);
+            userRepository.save(user);
+        }
     }
 
     private List<NewsItemResponseDTO> loadByQueries(List<String> queries) {
