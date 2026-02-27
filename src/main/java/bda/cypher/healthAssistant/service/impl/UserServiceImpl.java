@@ -8,12 +8,19 @@ import bda.cypher.healthAssistant.dto.UserRegisterRequestDTO;
 import bda.cypher.healthAssistant.dto.UserResponseDTO;
 import bda.cypher.healthAssistant.dto.UserUpdateRequestDTO;
 import bda.cypher.healthAssistant.entity.HealthCondition;
+import bda.cypher.healthAssistant.entity.Keyword;
 import bda.cypher.healthAssistant.entity.User;
+import bda.cypher.healthAssistant.repository.ConditionCategoryTranslationRepository;
+import bda.cypher.healthAssistant.repository.HealthConditionTranslationRepository;
 import bda.cypher.healthAssistant.repository.HealthConditionRepository;
+import bda.cypher.healthAssistant.repository.KeywordRepository;
 import bda.cypher.healthAssistant.repository.UserRepository;
 import bda.cypher.healthAssistant.service.EmailOtpService;
 import bda.cypher.healthAssistant.service.UserService;
 import lombok.RequiredArgsConstructor;
+
+import java.util.Locale;
+import java.util.Optional;
 
 
 @Service
@@ -22,6 +29,9 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final HealthConditionRepository healthConditionRepository;
+    private final HealthConditionTranslationRepository healthConditionTranslationRepository;
+    private final ConditionCategoryTranslationRepository conditionCategoryTranslationRepository;
+    private final KeywordRepository keywordRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailOtpService emailOtpService;
     @Value("${email.verification.required:true}")
@@ -51,6 +61,7 @@ public class UserServiceImpl implements UserService {
             HealthCondition condition = healthConditionRepository.findById(request.getConditionId())
                     .orElseThrow(() -> new RuntimeException("Condition not found"));
             user.setHealthCondition(condition);
+            addConditionKeywords(user);
         }
 
         User savedUser = userRepository.save(user);
@@ -96,6 +107,7 @@ public class UserServiceImpl implements UserService {
             HealthCondition condition = healthConditionRepository.findById(request.getConditionId())
                     .orElseThrow(() -> new RuntimeException("Condition not found"));
             user.setHealthCondition(condition);
+            addConditionKeywords(user);
         }
 
         User savedUser = userRepository.save(user);
@@ -124,6 +136,59 @@ public class UserServiceImpl implements UserService {
         }
         
         return dto;
+    }
+
+    private void addConditionKeywords(User user) {
+        if (user.getHealthCondition() == null) {
+            return;
+        }
+        String nameAz = normalizeKeyword(user.getHealthCondition().getName());
+        String nameEn = healthConditionTranslationRepository.findByConditionId(user.getHealthCondition().getId())
+                .map(t -> normalizeKeyword(t.getNameEn()))
+                .orElse(null);
+        String categoryAz = user.getHealthCondition().getCategory() != null
+                ? normalizeKeyword(user.getHealthCondition().getCategory().getName())
+                : null;
+        String categoryEn = user.getHealthCondition().getCategory() != null
+                ? conditionCategoryTranslationRepository.findByCategoryId(user.getHealthCondition().getCategory().getId())
+                    .map(t -> normalizeKeyword(t.getNameEn()))
+                    .orElse(null)
+                : null;
+        addKeyword(user, nameAz);
+        addKeyword(user, nameEn);
+        addKeyword(user, categoryAz);
+        addKeyword(user, categoryEn);
+    }
+
+    private void addKeyword(User user, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return;
+        }
+        boolean alreadyLinked = user.getKeywords().stream()
+                .anyMatch(k -> k.getKeyword() != null && k.getKeyword().equalsIgnoreCase(keyword));
+        if (alreadyLinked) {
+            return;
+        }
+        Optional<Keyword> existing = keywordRepository.findByKeyword(keyword);
+        Keyword entity = existing.orElseGet(() -> {
+            Keyword k = new Keyword();
+            k.setKeyword(keyword);
+            return k;
+        });
+        user.getKeywords().add(entity);
+        entity.getUsers().add(user);
+        keywordRepository.save(entity);
+    }
+
+    private String normalizeKeyword(String keyword) {
+        if (keyword == null) {
+            return null;
+        }
+        String trimmed = keyword.trim();
+        if (trimmed.isBlank()) {
+            return null;
+        }
+        return trimmed.toLowerCase(Locale.ROOT);
     }
    
 }
