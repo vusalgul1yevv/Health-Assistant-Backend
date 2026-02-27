@@ -1,5 +1,6 @@
 package bda.cypher.healthAssistant.dto;
 
+import java.time.LocalDate;
 import java.time.Instant;
 
 public class WorkoutResponseDTO {
@@ -11,6 +12,8 @@ public class WorkoutResponseDTO {
     private String startTime;
     private String endTime;
     private String dayOfWeek;
+    private LocalDate weekStart;
+    private String source;
     private String instructions;
     private Instant createdAt;
 
@@ -76,6 +79,22 @@ public class WorkoutResponseDTO {
 
     public void setDayOfWeek(String dayOfWeek) {
         this.dayOfWeek = dayOfWeek;
+    }
+
+    public LocalDate getWeekStart() {
+        return weekStart;
+    }
+
+    public void setWeekStart(LocalDate weekStart) {
+        this.weekStart = weekStart;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
     }
 
     public String getInstructions() {

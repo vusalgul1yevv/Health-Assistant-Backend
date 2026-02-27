@@ -11,6 +11,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "workouts")
@@ -34,6 +35,10 @@ public class Workout {
 
     @Column(nullable = false)
     private String dayOfWeek;
+
+    private LocalDate weekStart;
+
+    private String source;
 
     @Column(columnDefinition = "text")
     private String instructions;
@@ -107,6 +112,22 @@ public class Workout {
 
     public void setDayOfWeek(String dayOfWeek) {
         this.dayOfWeek = dayOfWeek;
+    }
+
+    public LocalDate getWeekStart() {
+        return weekStart;
+    }
+
+    public void setWeekStart(LocalDate weekStart) {
+        this.weekStart = weekStart;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
     }
 
     public String getInstructions() {

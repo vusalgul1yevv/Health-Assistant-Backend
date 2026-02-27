@@ -15,8 +15,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -34,6 +36,13 @@ public class WorkoutController {
     @GetMapping
     public ResponseEntity<List<WorkoutResponseDTO>> getMyWorkouts(Authentication authentication) {
         return ResponseEntity.ok(workoutService.getUserWorkouts(authentication.getName()));
+    }
+
+    @GetMapping("/ai")
+    public ResponseEntity<List<WorkoutResponseDTO>> getAiPlan(@RequestParam(required = false) LocalDate weekStart,
+                                                              @RequestParam(required = false, defaultValue = "false") boolean force,
+                                                              Authentication authentication) {
+        return ResponseEntity.ok(workoutService.getAiWorkoutPlanByWeekStart(authentication.getName(), weekStart, force));
     }
 
     @PutMapping("/{id}")
