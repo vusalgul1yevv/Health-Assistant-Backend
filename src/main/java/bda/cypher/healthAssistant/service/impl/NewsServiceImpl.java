@@ -64,10 +64,18 @@ public class NewsServiceImpl implements NewsService {
         User user = getUser(userEmail);
         if (user.getKeywords().isEmpty()) {
             String conditionKeyword = conditionKeyword(user);
-            if (conditionKeyword == null) {
-                return new ArrayList<>();
+            String categoryKeyword = conditionCategoryKeyword(user);
+            List<String> queries = new ArrayList<>();
+            if (conditionKeyword != null) {
+                queries.add(conditionKeyword);
             }
-            return loadByQueries(List.of(conditionKeyword));
+            if (categoryKeyword != null && (conditionKeyword == null || !categoryKeyword.equalsIgnoreCase(conditionKeyword))) {
+                queries.add(categoryKeyword);
+            }
+            if (queries.isEmpty()) {
+                queries.add("health");
+            }
+            return loadByQueries(queries);
         }
         Map<String, NewsItemResponseDTO> deduped = new HashMap<>();
         for (Keyword keyword : user.getKeywords()) {
@@ -175,6 +183,17 @@ public class NewsServiceImpl implements NewsService {
             return null;
         }
         String name = user.getHealthCondition().getName();
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        return name.trim();
+    }
+
+    private String conditionCategoryKeyword(User user) {
+        if (user.getHealthCondition() == null || user.getHealthCondition().getCategory() == null) {
+            return null;
+        }
+        String name = user.getHealthCondition().getCategory().getName();
         if (name == null || name.isBlank()) {
             return null;
         }

@@ -37,6 +37,7 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -180,7 +181,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                 builder.append(" - ")
                         .append(meal.getMealType())
                         .append(" | ")
-                        .append(meal.getTitle());
+                        .append(meal.getTitle() == null || meal.getTitle().isBlank() ? defaultMealTitle(meal.getMealType()) : meal.getTitle());
                 if (meal.getTime() != null && !meal.getTime().isBlank()) {
                     builder.append(" | ").append(meal.getTime());
                 }
@@ -239,9 +240,9 @@ public class MealPlanServiceImpl implements MealPlanService {
         MealPlanDay day = new MealPlanDay();
         day.setDayOfWeek(dayOfWeek);
         day.setMealPlan(plan);
-        day.getMeals().add(createMeal(day, "Breakfast", "Seçilməyib", "07:00 AM"));
-        day.getMeals().add(createMeal(day, "Lunch", "Seçilməyib", "12:00 PM"));
-        day.getMeals().add(createMeal(day, "Dinner", "Seçilməyib", "06:00 PM"));
+        day.getMeals().add(createMeal(day, "Breakfast", defaultMealTitle("Breakfast"), "07:00 AM"));
+        day.getMeals().add(createMeal(day, "Lunch", defaultMealTitle("Lunch"), "12:00 PM"));
+        day.getMeals().add(createMeal(day, "Dinner", defaultMealTitle("Dinner"), "06:00 PM"));
         return day;
     }
 
@@ -292,7 +293,7 @@ public class MealPlanServiceImpl implements MealPlanService {
             List<MealPlanMealDTO> meals = day.getMeals().stream().map(meal -> {
                 MealPlanMealDTO mealDto = new MealPlanMealDTO();
                 mealDto.setMealType(meal.getMealType());
-                mealDto.setTitle(meal.getTitle());
+                mealDto.setTitle(meal.getTitle() == null || meal.getTitle().isBlank() ? defaultMealTitle(meal.getMealType()) : meal.getTitle());
                 mealDto.setTime(meal.getTime());
                 return mealDto;
             }).collect(Collectors.toList());
@@ -301,6 +302,15 @@ public class MealPlanServiceImpl implements MealPlanService {
         }).collect(Collectors.toList());
         dto.setDays(days);
         return dto;
+    }
+
+    private String defaultMealTitle(String mealType) {
+        return switch (mealType) {
+            case "Breakfast" -> "Səhər yeməyi";
+            case "Lunch" -> "Nahar";
+            case "Dinner" -> "Şam yeməyi";
+            default -> "Yemək";
+        };
     }
 
     private void triggerAiGeneration(User user, LocalDate weekStart) {
@@ -387,7 +397,70 @@ public class MealPlanServiceImpl implements MealPlanService {
         if (severity != null && !severity.isBlank()) {
             builder.append("Severity: ").append(severity).append(". ");
         }
+        String avoidList = buildAvoidList(condition, category, severity);
+        if (!avoidList.isBlank()) {
+            builder.append("Avoid or strictly limit these foods: ").append(avoidList).append(". ");
+        }
+        builder.append("Meals must be safe for the condition and avoid harmful foods. ");
         return builder.toString();
+    }
+
+    private String buildAvoidList(String condition, String category, String severity) {
+        String base = (condition == null ? "" : condition) + " " + (category == null ? "" : category);
+        String normalized = base.toLowerCase(Locale.ROOT);
+        List<String> avoids = new ArrayList<>();
+        if (normalized.contains("diabet")) {
+            avoids.add("şəkərli içkilər");
+            avoids.add("şirniyyatlar");
+            avoids.add("ağ un və rafinə taxıllar");
+            avoids.add("şirin desertlər");
+        }
+        if (normalized.contains("hipertoni") || normalized.contains("təzyiq") || normalized.contains("pressure")) {
+            avoids.add("həddindən artıq duz");
+            avoids.add("duzlu konservlər");
+            avoids.add("kolbasa və emal olunmuş ətlər");
+            avoids.add("çips və hazır qəlyanaltılar");
+        }
+        if (normalized.contains("kidney") || normalized.contains("böyrək") || normalized.contains("renal")) {
+            avoids.add("çox duzlu qidalar");
+            avoids.add("emal olunmuş ətlər");
+            avoids.add("qazlı içkilər");
+        }
+        if (normalized.contains("cholesterol") || normalized.contains("lipid")) {
+            avoids.add("qızartmalar");
+            avoids.add("trans yağlar");
+            avoids.add("yağlı fast-food");
+        }
+        if (normalized.contains("celiac") || normalized.contains("gluten")) {
+            avoids.add("buğda");
+            avoids.add("arpa");
+            avoids.add("çovdar");
+        }
+        if (normalized.contains("gout") || normalized.contains("uric")) {
+            avoids.add("sakatatlar");
+            avoids.add("qırmızı ət çox");
+            avoids.add("sardina və bəzi yağlı balıqlar");
+        }
+        if (normalized.contains("gastrit") || normalized.contains("ulcer") || normalized.contains("mədə")) {
+            avoids.add("acılı qidalar");
+            avoids.add("qızartmalar");
+            avoids.add("qəhvə çox");
+            avoids.add("alkoqol");
+        }
+        if (normalized.contains("liver") || normalized.contains("qaraciyər")) {
+            avoids.add("yağlı qidalar");
+            avoids.add("alkoqol");
+            avoids.add("qızartmalar");
+        }
+        if (normalized.contains("obes") || normalized.contains("çəki") || normalized.contains("weight")) {
+            avoids.add("şəkərli içkilər");
+            avoids.add("fast-food");
+            avoids.add("şirniyyatlar");
+        }
+        if (severity != null && !severity.isBlank() && severity.toLowerCase(Locale.ROOT).contains("severe")) {
+            avoids.add("şəkər və duz yüksək qidalar");
+        }
+        return String.join(", ", avoids);
     }
 
     private List<ShoppingCategoryPayload> parseAiShoppingList(String content) {
