@@ -348,6 +348,7 @@ public class MealPlanServiceImpl implements MealPlanService {
         String severity = user.getSeverity();
         StringBuilder builder = new StringBuilder();
         builder.append("Return ONLY raw JSON (no markdown, no code fences). ");
+        builder.append("All human-readable text must be in Azerbaijani (meal titles, shopping list item names, quantities). ");
         builder.append("Return EXACTLY 7 days using dayOfWeek: Mon,Tue,Wed,Thu,Fri,Sat,Sun. ");
         builder.append("Each day must have EXACTLY 3 meals: Breakfast,Lunch,Dinner. ");
         builder.append("Each meal MUST include: mealType, title (non-empty), time. ");
@@ -454,14 +455,22 @@ public class MealPlanServiceImpl implements MealPlanService {
     private String normalizeCategory(String category) {
         if (category == null) return "Digər";
         String v = category.trim().toLowerCase();
+        if (v.contains("grain") || v.contains("grains") || v.contains("cereal") || v.contains("bread")) return "Taxıllar";
+        if (v.contains("fruit") || v.contains("fruits") || v.contains("berry")) return "Meyvələr";
+        if (v.contains("vegetable") || v.contains("vegetables") || v.contains("greens")) return "Tərəvəzlər";
+        if (v.contains("dairy") || v.contains("milk") || v.contains("yogurt") || v.contains("cheese")) return "Süd məhsulları";
+        if (v.contains("protein") || v.contains("proteins") || v.contains("meat") || v.contains("fish") || v.contains("chicken") || v.contains("beef") || v.contains("turkey") || v.contains("salmon") || v.contains("egg")) return "Ət/Balıq";
+        if (v.contains("nut") || v.contains("nuts") || v.contains("seed") || v.contains("seeds")) return "Qoz-fındıq";
+        if (v.contains("drink") || v.contains("beverage") || v.contains("water") || v.contains("tea") || v.contains("coffee")) return "İçkilər";
+        if (v.contains("sweet") || v.contains("sweetener") || v.contains("sweeteners") || v.contains("dessert") || v.contains("sugar") || v.contains("honey")) return "Şirniyyatlar";
         if (v.contains("tax")) return "Taxıllar";
         if (v.contains("meyv")) return "Meyvələr";
         if (v.contains("tərəv") || v.contains("terevez")) return "Tərəvəzlər";
-        if (v.contains("süd") || v.contains("milk") || v.contains("dairy")) return "Süd məhsulları";
-        if (v.contains("ət") || v.contains("balıq") || v.contains("meat") || v.contains("fish")) return "Ət/Balıq";
-        if (v.contains("qoz") || v.contains("fındıq") || v.contains("nut")) return "Qoz-fındıq";
-        if (v.contains("içki") || v.contains("drink")) return "İçkilər";
-        if (v.contains("şirn") || v.contains("sweet") || v.contains("dessert")) return "Şirniyyatlar";
+        if (v.contains("süd")) return "Süd məhsulları";
+        if (v.contains("ət") || v.contains("balıq")) return "Ət/Balıq";
+        if (v.contains("qoz") || v.contains("fındıq")) return "Qoz-fındıq";
+        if (v.contains("içki")) return "İçkilər";
+        if (v.contains("şirn")) return "Şirniyyatlar";
         return "Digər";
     }
 
@@ -570,7 +579,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                     "temperature", 0.4,
                     "max_tokens", aiMaxTokens,
                     "messages", List.of(
-                            Map.of("role", "system", "content", "Return only JSON without markdown."),
+                            Map.of("role", "system", "content", "Return only raw JSON. No markdown. Use Azerbaijani for human-readable text."),
                             Map.of("role", "user", "content", prompt)
                     )
             );
