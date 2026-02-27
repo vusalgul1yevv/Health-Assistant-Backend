@@ -35,8 +35,16 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
+import java.util.regex.Pattern;
+
 @Service
 public class WorkoutServiceImpl implements WorkoutService {
+    private static final Pattern AZ_CHAR_PATTERN = Pattern.compile("[əğıöüşç]");
+    private static final List<String> AZ_HINTS = List.of(
+            "səhər", "seher", "nahar", "şam", "sam", "yemək", "yemek", "gəzinti", "gezinti",
+            "məşq", "mesq", "yüngül", "yungul", "dəqiqə", "deqiqe", "təlimat", "telimat",
+            "tərəv", "terevez", "meyv", "süd", "sud", "qoz", "fındıq", "findiq", "sağlam", "saglam"
+    );
     private final WorkoutRepository workoutRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
@@ -116,7 +124,10 @@ public class WorkoutServiceImpl implements WorkoutService {
         if (!force) {
             List<Workout> ai = workoutRepository.findAllByUserIdAndWeekStartAndSourceOrderByDayOfWeekAsc(user.getId(), targetWeek, "ai");
             if (isValidAiPlan(ai)) {
-                return ai.stream().map(this::mapToDTO).collect(Collectors.toList());
+                if (isLikelyAzerbaijaniWorkouts(ai)) {
+                    return ai.stream().map(this::mapToDTO).collect(Collectors.toList());
+                }
+                workoutRepository.deleteByUserIdAndWeekStartAndSource(user.getId(), targetWeek, "ai");
             }
         } else {
             workoutRepository.deleteByUserIdAndWeekStartAndSource(user.getId(), targetWeek, "ai");
@@ -280,6 +291,7 @@ public class WorkoutServiceImpl implements WorkoutService {
         StringBuilder builder = new StringBuilder();
         builder.append("Return ONLY raw JSON (no markdown). ");
         builder.append("All human-readable text must be in Azerbaijani (workout names, categories, instructions). ");
+        builder.append("Use Azerbaijani characters (ə, ğ, ı, ö, ü, ç, ş). ");
         builder.append("Create a 7-day workout plan as JSON with EXACTLY 7 items. ");
         builder.append("Use dayOfWeek values Mon,Tue,Wed,Thu,Fri,Sat,Sun. ");
         builder.append("Format: {\"workouts\":[{\"dayOfWeek\":\"Mon\",\"name\":\"...\",\"category\":\"...\",\"durationMinutes\":30,\"calories\":150,\"startTime\":\"08:00\",\"endTime\":\"08:30\",\"instructions\":\"...\"}]}. ");
@@ -301,7 +313,7 @@ public class WorkoutServiceImpl implements WorkoutService {
                     "temperature", 0.4,
                     "max_tokens", aiMaxTokens,
                     "messages", List.of(
-                            Map.of("role", "system", "content", "Return only raw JSON. No markdown. Use Azerbaijani for human-readable text."),
+                            Map.of("role", "system", "content", "Return only raw JSON. No markdown. Use Azerbaijani for human-readable text and Azerbaijani characters (ə, ğ, ı, ö, ü, ç, ş)."),
                             Map.of("role", "user", "content", prompt)
                     )
             );
@@ -392,6 +404,36 @@ public class WorkoutServiceImpl implements WorkoutService {
             daySet.add(w.getDayOfWeek());
         }
         return daySet.size() == 7;
+    }
+
+    private boolean isLikelyAzerbaijaniWorkouts(List<Workout> workouts) {
+        if (workouts == null || workouts.isEmpty()) {
+            return false;
+        }
+        for (Workout w : workouts) {
+            if (isLikelyAzerbaijaniText(w.getName())
+                    || isLikelyAzerbaijaniText(w.getCategory())
+                    || isLikelyAzerbaijaniText(w.getInstructions())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isLikelyAzerbaijaniText(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String value = text.toLowerCase(Locale.ROOT);
+        if (AZ_CHAR_PATTERN.matcher(value).find()) {
+            return true;
+        }
+        for (String hint : AZ_HINTS) {
+            if (value.contains(hint)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isAiFresh(Instant createdAt) {

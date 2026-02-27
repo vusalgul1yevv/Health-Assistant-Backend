@@ -45,9 +45,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 @Service
 public class MealPlanServiceImpl implements MealPlanService {
+    private static final Pattern AZ_CHAR_PATTERN = Pattern.compile("[əğıöüşç]");
+    private static final List<String> AZ_HINTS = List.of(
+            "səhər", "seher", "nahar", "şam", "sam", "yemək", "yemek", "gəzinti", "gezinti",
+            "məşq", "mesq", "yüngül", "yungul", "dəqiqə", "deqiqe", "təlimat", "telimat",
+            "tərəv", "terevez", "meyv", "süd", "sud", "qoz", "fındıq", "findiq", "sağlam", "saglam"
+    );
     private final MealPlanRepository mealPlanRepository;
     private final UserRepository userRepository;
     private final ShoppingListRepository shoppingListRepository;
@@ -123,7 +130,10 @@ public class MealPlanServiceImpl implements MealPlanService {
         MealPlan aiPlan = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), targetWeek, "ai")
                 .orElse(null);
         if (aiPlan != null && !force) {
-            return mapToDTO(aiPlan);
+            if (isLikelyAzerbaijaniPlan(aiPlan)) {
+                return mapToDTO(aiPlan);
+            }
+            mealPlanRepository.delete(aiPlan);
         }
         if (force && aiPlan != null) {
             mealPlanRepository.delete(aiPlan);
@@ -367,6 +377,7 @@ public class MealPlanServiceImpl implements MealPlanService {
         StringBuilder builder = new StringBuilder();
         builder.append("Return ONLY raw JSON (no markdown, no code fences). ");
         builder.append("All human-readable text must be in Azerbaijani (meal titles, shopping list item names, quantities). ");
+        builder.append("Use Azerbaijani characters (ə, ğ, ı, ö, ü, ç, ş). ");
         builder.append("Return EXACTLY 7 days using dayOfWeek: Mon,Tue,Wed,Thu,Fri,Sat,Sun. ");
         builder.append("Each day must have EXACTLY 3 meals: Breakfast,Lunch,Dinner. ");
         builder.append("Each meal MUST include: mealType, title (non-empty), time. ");
@@ -693,7 +704,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                     "temperature", 0.4,
                     "max_tokens", aiMaxTokens,
                     "messages", List.of(
-                            Map.of("role", "system", "content", "Return only raw JSON. No markdown. Use Azerbaijani for human-readable text."),
+                            Map.of("role", "system", "content", "Return only raw JSON. No markdown. Use Azerbaijani for human-readable text and Azerbaijani characters (ə, ğ, ı, ö, ü, ç, ş)."),
                             Map.of("role", "user", "content", prompt)
                     )
             );
@@ -771,6 +782,39 @@ public class MealPlanServiceImpl implements MealPlanService {
             daySet.add(day.getDayOfWeek());
         }
         return daySet.size() == 7;
+    }
+
+    private boolean isLikelyAzerbaijaniPlan(MealPlan plan) {
+        if (plan == null || plan.getDays() == null) {
+            return false;
+        }
+        for (MealPlanDay day : plan.getDays()) {
+            if (day.getMeals() == null) {
+                continue;
+            }
+            for (MealPlanMeal meal : day.getMeals()) {
+                if (isLikelyAzerbaijaniText(meal.getTitle())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isLikelyAzerbaijaniText(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String value = text.toLowerCase(Locale.ROOT);
+        if (AZ_CHAR_PATTERN.matcher(value).find()) {
+            return true;
+        }
+        for (String hint : AZ_HINTS) {
+            if (value.contains(hint)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String extractJson(String content) {
