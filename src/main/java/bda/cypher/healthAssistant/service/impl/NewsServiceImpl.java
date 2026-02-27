@@ -29,6 +29,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,7 +46,9 @@ public class NewsServiceImpl implements NewsService {
     private final UserRepository userRepository;
     private final KeywordRepository keywordRepository;
     private final NewsRepository newsRepository;
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
 
     public NewsServiceImpl(UserRepository userRepository,
                            KeywordRepository keywordRepository,
@@ -199,7 +202,7 @@ public class NewsServiceImpl implements NewsService {
                 deduped.putIfAbsent(hash, item);
             }
         } catch (Exception ex) {
-            log.warn("RSS oxunmadı: {}", query);
+            log.warn("RSS oxunmadı: {} ({})", query, ex.toString());
         }
     }
 
@@ -211,11 +214,14 @@ public class NewsServiceImpl implements NewsService {
     private String fetchRss(String url) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(20))
+                .header("User-Agent", "Mozilla/5.0")
+                .header("Accept", "application/rss+xml, application/xml;q=0.9, */*;q=0.8")
                 .GET()
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() >= 400) {
-            throw new RuntimeException("RSS alınmadı");
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("RSS status=" + response.statusCode());
         }
         return response.body();
     }
