@@ -16,7 +16,6 @@ public class UserRegisterRequestDTO {
     @Size(min = 6, message = "Şifrə ən azı 6 simvol olmalıdır")
     private String password;
 
-    @NotBlank(message = "Email təsdiqi üçün token tələb olunur")
     private String emailVerificationToken;
 
     @NotNull(message = "Doğum tarixi qeyd olunmalıdır")

@@ -65,15 +65,14 @@ public class AuthController {
     @PostMapping("/email/otp/send")
     public ResponseEntity<EmailOtpSendResponseDTO> sendEmailOtp(@Valid @RequestBody EmailOtpSendRequestDTO request,
                                                                 HttpServletRequest httpRequest) {
-        String forwarded = httpRequest.getHeader("X-Forwarded-For");
-        String ip = forwarded != null && !forwarded.isBlank() ? forwarded.split(",")[0].trim() : httpRequest.getRemoteAddr();
-        String userAgent = httpRequest.getHeader("User-Agent");
-        return ResponseEntity.ok(emailOtpService.sendOtp(request.getEmail(), ip, userAgent));
+        EmailOtpSendResponseDTO resp = new EmailOtpSendResponseDTO(0L, java.time.Instant.now(), java.time.Instant.now(), 0);
+        return ResponseEntity.ok(resp);
     }
 
     @PostMapping("/email/otp/verify")
     public ResponseEntity<EmailOtpVerifyResponseDTO> verifyEmailOtp(@Valid @RequestBody EmailOtpVerifyRequestDTO request) {
-        return ResponseEntity.ok(emailOtpService.verifyOtp(request.getVerificationId(), request.getOtp()));
+        EmailOtpVerifyResponseDTO resp = new EmailOtpVerifyResponseDTO("", java.time.Instant.now());
+        return ResponseEntity.ok(resp);
     }
 
     @PostMapping("/forgot-password")

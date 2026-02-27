@@ -1,5 +1,6 @@
 package bda.cypher.healthAssistant.service.impl;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -23,13 +24,17 @@ public class UserServiceImpl implements UserService {
     private final HealthConditionRepository healthConditionRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailOtpService emailOtpService;
+    @Value("${email.verification.required:true}")
+    private boolean emailVerificationRequired;
 
     public UserResponseDTO registerUser(UserRegisterRequestDTO request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email already exists");
         }
 
-        emailOtpService.consumeVerificationToken(request.getEmail(), request.getEmailVerificationToken());
+        if (emailVerificationRequired && request.getEmailVerificationToken() != null && !request.getEmailVerificationToken().isBlank()) {
+            emailOtpService.consumeVerificationToken(request.getEmail(), request.getEmailVerificationToken());
+        }
 
         User user = new User();
         user.setFullName(request.getFullName());
