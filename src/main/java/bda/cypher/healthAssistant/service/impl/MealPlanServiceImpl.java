@@ -272,7 +272,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                 meal.setMealPlanDay(day);
                 meal.setMealType(type);
                 meal.setTitle(template.getName());
-                meal.setTime(null);
+                meal.setTime(defaultMealTime(type));
                 day.getMeals().add(meal);
                 template.getIngredients().forEach(ing -> {
                     if (ing.getName() != null && !ing.getName().isBlank()) {
@@ -377,6 +377,15 @@ public class MealPlanServiceImpl implements MealPlanService {
             case "Lunch" -> "Nahar";
             case "Dinner" -> "Şam yeməyi";
             default -> "Yemək";
+        };
+    }
+
+    private String defaultMealTime(String mealType) {
+        return switch (mealType) {
+            case "Breakfast" -> "07:00 AM";
+            case "Lunch" -> "12:00 PM";
+            case "Dinner" -> "06:00 PM";
+            default -> null;
         };
     }
 
