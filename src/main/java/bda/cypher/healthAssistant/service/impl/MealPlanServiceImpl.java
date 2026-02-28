@@ -8,8 +8,10 @@ import bda.cypher.healthAssistant.dto.MealPlanUpdateRequestDTO;
 import bda.cypher.healthAssistant.entity.MealPlan;
 import bda.cypher.healthAssistant.entity.MealPlanDay;
 import bda.cypher.healthAssistant.entity.MealPlanMeal;
+import bda.cypher.healthAssistant.entity.MealTemplate;
 import bda.cypher.healthAssistant.entity.User;
 import bda.cypher.healthAssistant.repository.MealPlanRepository;
+import bda.cypher.healthAssistant.repository.MealTemplateRepository;
 import bda.cypher.healthAssistant.repository.ShoppingListRepository;
 import bda.cypher.healthAssistant.repository.UserRepository;
 import bda.cypher.healthAssistant.service.MealPlanService;
@@ -39,6 +41,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,6 +61,7 @@ public class MealPlanServiceImpl implements MealPlanService {
     private final MealPlanRepository mealPlanRepository;
     private final UserRepository userRepository;
     private final ShoppingListRepository shoppingListRepository;
+    private final MealTemplateRepository mealTemplateRepository;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final ExecutorService aiExecutor;
@@ -73,6 +77,7 @@ public class MealPlanServiceImpl implements MealPlanService {
     public MealPlanServiceImpl(MealPlanRepository mealPlanRepository,
                                UserRepository userRepository,
                                ShoppingListRepository shoppingListRepository,
+                               MealTemplateRepository mealTemplateRepository,
                                ObjectMapper objectMapper,
                                @Value("${ai.groq.base-url:https://api.groq.com/openai/v1/chat/completions}") String aiBaseUrl,
                                @Value("${ai.groq.model:}") String aiModel,
@@ -85,6 +90,7 @@ public class MealPlanServiceImpl implements MealPlanService {
         this.mealPlanRepository = mealPlanRepository;
         this.userRepository = userRepository;
         this.shoppingListRepository = shoppingListRepository;
+        this.mealTemplateRepository = mealTemplateRepository;
         this.objectMapper = objectMapper;
         this.aiBaseUrl = aiBaseUrl;
         this.aiModel = aiModel;
@@ -130,17 +136,13 @@ public class MealPlanServiceImpl implements MealPlanService {
         MealPlan aiPlan = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), targetWeek, "ai")
                 .orElse(null);
         if (aiPlan != null && !force) {
-            if (isLikelyAzerbaijaniPlan(aiPlan)) {
-                return mapToDTO(aiPlan);
-            }
+            return mapToDTO(aiPlan);
+        }
+        if (aiPlan != null) {
             mealPlanRepository.delete(aiPlan);
         }
-        if (force && aiPlan != null) {
-            mealPlanRepository.delete(aiPlan);
-        }
-        triggerAiGeneration(user, targetWeek);
-        MealPlan corePlan = getOrCreateCorePlan(user, targetWeek);
-        return mapToDTO(corePlan);
+        MealPlan preset = createPresetPlan(user, targetWeek);
+        return mapToDTO(preset);
     }
 
     @Override
@@ -232,6 +234,61 @@ public class MealPlanServiceImpl implements MealPlanService {
         plan.setSource(source);
         plan.getDays().addAll(defaultDays(plan));
         return plan;
+    }
+
+    private MealPlan createPresetPlan(User user, LocalDate weekStart) {
+        if (user.getHealthCondition() == null) {
+            return mealPlanRepository.save(createDefaultPlan(user, weekStart, "ai"));
+        }
+        List<MealTemplate> templates = mealTemplateRepository.findAllByConditionsId(user.getHealthCondition().getId());
+        MealPlan plan = mealPlanRepository.findByUserIdAndWeekStartAndSource(user.getId(), weekStart, "ai")
+                .orElseGet(() -> createDefaultPlan(user, weekStart, "ai"));
+        plan.setSource("ai");
+        plan.setCreatedAt(Instant.now());
+        plan.getDays().clear();
+        if (templates.isEmpty()) {
+            plan.getDays().addAll(defaultDays(plan));
+            return mealPlanRepository.save(plan);
+        }
+        Map<String, List<MealTemplate>> byType = templates.stream()
+                .collect(Collectors.groupingBy(MealTemplate::getMealType));
+        List<String> days = List.of("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun");
+        List<String> types = List.of("Breakfast", "Lunch", "Dinner");
+        List<Ingredient> ingredients = new ArrayList<>();
+        for (int dayIndex = 0; dayIndex < days.size(); dayIndex++) {
+            String dayName = days.get(dayIndex);
+            MealPlanDay day = new MealPlanDay();
+            day.setMealPlan(plan);
+            day.setDayOfWeek(dayName);
+            for (String type : types) {
+                List<MealTemplate> list = byType.getOrDefault(type, new ArrayList<>());
+                if (list.isEmpty()) {
+                    continue;
+                }
+                int baseIndex = Math.floorMod(Objects.hash(user.getHealthCondition().getId(), weekStart.toString(), type), list.size());
+                int selected = (baseIndex + dayIndex) % list.size();
+                MealTemplate template = list.get(selected);
+                MealPlanMeal meal = new MealPlanMeal();
+                meal.setMealPlanDay(day);
+                meal.setMealType(type);
+                meal.setTitle(template.getName());
+                meal.setTime(null);
+                day.getMeals().add(meal);
+                template.getIngredients().forEach(ing -> {
+                    if (ing.getName() != null && !ing.getName().isBlank()) {
+                        ingredients.add(new Ingredient(dayName, ing.getName().trim(),
+                                ing.getQuantity() == null ? "" : ing.getQuantity().trim(),
+                                normalizeCategory(ing.getCategory())));
+                    }
+                });
+            }
+            plan.getDays().add(day);
+        }
+        MealPlan saved = mealPlanRepository.save(plan);
+        if (!ingredients.isEmpty()) {
+            updateShoppingListFromIngredients(user, weekStart, ingredients);
+        }
+        return saved;
     }
 
     private List<MealPlanDay> defaultDays(MealPlan plan) {
