@@ -15,4 +15,5 @@ public interface MealPlanService {
     MealPlanResponseDTO generatePlan(String userEmail, MealPlanGenerateRequestDTO request);
     MealPlanResponseDTO updatePlan(String userEmail, Long id, MealPlanUpdateRequestDTO request);
     byte[] exportPlan(String userEmail, Long id);
+    byte[] exportPlan(String userEmail, Long id, String format);
 }

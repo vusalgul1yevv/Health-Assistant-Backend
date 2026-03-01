@@ -11,4 +11,5 @@ public interface ShoppingListService {
     ShoppingListResponseDTO getListByWeekStart(String userEmail, LocalDate weekStart, String dayOfWeek);
     ShoppingListResponseDTO updateItems(String userEmail, Long id, ShoppingListUpdateRequestDTO request);
     byte[] exportList(String userEmail, Long id);
+    byte[] exportList(String userEmail, Long id, String format);
 }

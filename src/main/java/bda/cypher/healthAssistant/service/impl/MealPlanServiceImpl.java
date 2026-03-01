@@ -25,6 +25,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -182,9 +183,27 @@ public class MealPlanServiceImpl implements MealPlanService {
 
     @Override
     public byte[] exportPlan(String userEmail, Long id) {
+        return exportPlan(userEmail, id, null);
+    }
+
+    @Override
+    public byte[] exportPlan(String userEmail, Long id, String format) {
         User user = getUser(userEmail);
         MealPlan plan = mealPlanRepository.findByIdAndUserId(id, user.getId())
                 .orElseThrow(() -> new RuntimeException("Plan tapılmadı"));
+        String text = buildExportText(plan);
+        if (format != null && format.equalsIgnoreCase("pdf")) {
+            return buildPdf(text);
+        }
+        return text.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private User getUser(String userEmail) {
+        return userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
+    }
+
+    private String buildExportText(MealPlan plan) {
         StringBuilder builder = new StringBuilder();
         builder.append("WeekStart: ").append(plan.getWeekStart()).append("\n");
         for (MealPlanDay day : plan.getDays()) {
@@ -200,12 +219,82 @@ public class MealPlanServiceImpl implements MealPlanService {
                 builder.append("\n");
             }
         }
-        return builder.toString().getBytes(StandardCharsets.UTF_8);
+        return builder.toString();
     }
 
-    private User getUser(String userEmail) {
-        return userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User tapılmadı"));
+    private byte[] buildPdf(String text) {
+        String[] rawLines = text.split("\\R");
+        List<String> lines = new ArrayList<>();
+        for (String line : rawLines) {
+            lines.add(line);
+        }
+        StringBuilder content = new StringBuilder();
+        content.append("BT\n/F1 12 Tf\n14 TL\n50 780 Td\n");
+        for (int i = 0; i < lines.size(); i++) {
+            String line = escapePdf(lines.get(i));
+            content.append("(").append(line).append(") Tj\n");
+            if (i < lines.size() - 1) {
+                content.append("T*\n");
+            }
+        }
+        content.append("ET");
+        byte[] contentBytes = content.toString().getBytes(StandardCharsets.ISO_8859_1);
+
+        List<Integer> offsets = new ArrayList<>();
+        String header = "%PDF-1.4\n";
+        String obj1 = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+        String obj2 = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
+        String obj3 = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n";
+        String obj4Start = "4 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n";
+        String obj4End = "\nendstream\nendobj\n";
+        String obj5 = "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.writeBytes(header.getBytes(StandardCharsets.ISO_8859_1));
+        offsets.add(0);
+        offsets.add(out.size());
+        out.writeBytes(obj1.getBytes(StandardCharsets.ISO_8859_1));
+        offsets.add(out.size());
+        out.writeBytes(obj2.getBytes(StandardCharsets.ISO_8859_1));
+        offsets.add(out.size());
+        out.writeBytes(obj3.getBytes(StandardCharsets.ISO_8859_1));
+        offsets.add(out.size());
+        out.writeBytes(obj4Start.getBytes(StandardCharsets.ISO_8859_1));
+        out.writeBytes(contentBytes);
+        out.writeBytes(obj4End.getBytes(StandardCharsets.ISO_8859_1));
+        offsets.add(out.size());
+        out.writeBytes(obj5.getBytes(StandardCharsets.ISO_8859_1));
+
+        int xrefStart = out.size();
+        StringBuilder xref = new StringBuilder();
+        xref.append("xref\n0 6\n");
+        xref.append(String.format("%010d 65535 f \n", 0));
+        for (int i = 1; i <= 5; i++) {
+            xref.append(String.format("%010d 00000 n \n", offsets.get(i)));
+        }
+        xref.append("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n");
+        xref.append(xrefStart).append("\n%%EOF");
+        out.writeBytes(xref.toString().getBytes(StandardCharsets.ISO_8859_1));
+        return out.toByteArray();
+    }
+
+    private String escapePdf(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder builder = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch == '(' || ch == ')' || ch == '\\') {
+                builder.append('\\');
+            }
+            if (ch <= 0xFF) {
+                builder.append(ch);
+            } else {
+                builder.append('?');
+            }
+        }
+        return builder.toString();
     }
 
     private MealPlan getOrCreateCorePlan(User user, LocalDate weekStart) {

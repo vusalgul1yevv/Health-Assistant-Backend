@@ -70,10 +70,13 @@ public class MealPlanController {
     public ResponseEntity<byte[]> export(@PathVariable Long id,
                                          @RequestParam(required = false) String format,
                                          Authentication authentication) {
-        byte[] content = mealPlanService.exportPlan(authentication.getName(), id);
+        boolean pdf = format != null && format.equalsIgnoreCase("pdf");
+        byte[] content = mealPlanService.exportPlan(authentication.getName(), id, format);
+        String filename = "meal-plan-" + id + (pdf ? ".pdf" : ".txt");
+        MediaType mediaType = pdf ? MediaType.APPLICATION_PDF : MediaType.TEXT_PLAIN;
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=meal-plan-" + id + ".txt")
-                .contentType(MediaType.TEXT_PLAIN)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(mediaType)
                 .body(content);
     }
 }

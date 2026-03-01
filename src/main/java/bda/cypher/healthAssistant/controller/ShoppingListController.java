@@ -51,10 +51,13 @@ public class ShoppingListController {
     public ResponseEntity<byte[]> export(@PathVariable Long id,
                                          @RequestParam(required = false) String format,
                                          Authentication authentication) {
-        byte[] content = shoppingListService.exportList(authentication.getName(), id);
+        boolean pdf = format != null && format.equalsIgnoreCase("pdf");
+        byte[] content = shoppingListService.exportList(authentication.getName(), id, format);
+        String filename = "shopping-list-" + id + (pdf ? ".pdf" : ".txt");
+        MediaType mediaType = pdf ? MediaType.APPLICATION_PDF : MediaType.TEXT_PLAIN;
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=shopping-list-" + id + ".txt")
-                .contentType(MediaType.TEXT_PLAIN)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
+                .contentType(mediaType)
                 .body(content);
     }
 }
