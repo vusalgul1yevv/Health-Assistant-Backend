@@ -1,7 +1,11 @@
 package bda.cypher.healthAssistant.controller;
 
+import bda.cypher.healthAssistant.dto.MealPlanDayDTO;
+import bda.cypher.healthAssistant.dto.MealPlanMealDTO;
+import bda.cypher.healthAssistant.dto.MealPlanResponseDTO;
 import bda.cypher.healthAssistant.dto.MedicationResponseDTO;
 import bda.cypher.healthAssistant.dto.WorkoutResponseDTO;
+import bda.cypher.healthAssistant.service.MealPlanService;
 import bda.cypher.healthAssistant.service.MedicationService;
 import bda.cypher.healthAssistant.service.WorkoutService;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +33,7 @@ import java.util.stream.Collectors;
 public class HomeController {
     private final MedicationService medicationService;
     private final WorkoutService workoutService;
+    private final MealPlanService mealPlanService;
 
     @GetMapping("/today")
     public ResponseEntity<HomeScheduleResponse> getTodaySchedule(Authentication authentication) {
@@ -42,6 +47,7 @@ public class HomeController {
                 .stream()
                 .filter(workout -> matchesDay(workout.getDayOfWeek(), dayOfWeek, shortDay, fullDay))
                 .collect(Collectors.toList());
+        MealPlanResponseDTO plan = mealPlanService.getCurrentPlan(authentication.getName());
 
         List<HomeScheduleItem> items = new ArrayList<>();
         for (MedicationResponseDTO medication : medications) {
@@ -55,6 +61,21 @@ public class HomeController {
         for (WorkoutResponseDTO workout : workouts) {
             String subtitle = buildWorkoutSubtitle(workout);
             items.add(new HomeScheduleItem("WORKOUT", workout.getName(), subtitle, workout.getStartTime(), workout.getEndTime()));
+        }
+        if (plan != null && plan.getDays() != null) {
+            for (MealPlanDayDTO day : plan.getDays()) {
+                if (!matchesDay(day.getDayOfWeek(), dayOfWeek, shortDay, fullDay)) {
+                    continue;
+                }
+                if (day.getMeals() == null) {
+                    continue;
+                }
+                for (MealPlanMealDTO meal : day.getMeals()) {
+                    String title = meal.getMealType();
+                    String subtitle = meal.getTitle();
+                    items.add(new HomeScheduleItem("MEAL", title, subtitle, meal.getTime(), null));
+                }
+            }
         }
 
         items.sort(Comparator.comparing(item -> parseTime(item.time()), Comparator.nullsLast(Comparator.naturalOrder())));
