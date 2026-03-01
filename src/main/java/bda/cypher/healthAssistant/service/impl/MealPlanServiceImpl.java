@@ -223,31 +223,32 @@ public class MealPlanServiceImpl implements MealPlanService {
     }
 
     private byte[] buildPdf(String text) {
-        String[] rawLines = text.split("\\R");
+        String normalized = text == null ? "" : text.replace("\r\n", "\n").replace("\r", "\n");
+        String[] rawLines = normalized.split("\n", -1);
         List<String> lines = new ArrayList<>();
         for (String line : rawLines) {
             lines.add(line);
         }
         StringBuilder content = new StringBuilder();
-        content.append("BT\n/F1 12 Tf\n14 TL\n50 780 Td\n");
+        content.append("BT\r\n/F1 12 Tf\r\n14 TL\r\n50 780 Td\r\n");
         for (int i = 0; i < lines.size(); i++) {
             String line = escapePdf(lines.get(i));
-            content.append("(").append(line).append(") Tj\n");
+            content.append("(").append(line).append(") Tj\r\n");
             if (i < lines.size() - 1) {
-                content.append("T*\n");
+                content.append("T*\r\n");
             }
         }
         content.append("ET");
         byte[] contentBytes = content.toString().getBytes(StandardCharsets.ISO_8859_1);
 
         List<Integer> offsets = new ArrayList<>();
-        String header = "%PDF-1.4\n";
-        String obj1 = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
-        String obj2 = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
-        String obj3 = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n";
-        String obj4Start = "4 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n";
-        String obj4End = "\nendstream\nendobj\n";
-        String obj5 = "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+        String header = "%PDF-1.4\r\n%âãÏÓ\r\n";
+        String obj1 = "1 0 obj\r\n<< /Type /Catalog /Pages 2 0 R >>\r\nendobj\r\n";
+        String obj2 = "2 0 obj\r\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\r\nendobj\r\n";
+        String obj3 = "3 0 obj\r\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\r\nendobj\r\n";
+        String obj4Start = "4 0 obj\r\n<< /Length " + contentBytes.length + " >>\r\nstream\r\n";
+        String obj4End = "\r\nendstream\r\nendobj\r\n";
+        String obj5 = "5 0 obj\r\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\r\nendobj\r\n";
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         out.writeBytes(header.getBytes(StandardCharsets.ISO_8859_1));
@@ -267,13 +268,13 @@ public class MealPlanServiceImpl implements MealPlanService {
 
         int xrefStart = out.size();
         StringBuilder xref = new StringBuilder();
-        xref.append("xref\n0 6\n");
-        xref.append(String.format("%010d 65535 f \n", 0));
+        xref.append("xref\r\n0 6\r\n");
+        xref.append(String.format("%010d 65535 f \r\n", 0));
         for (int i = 1; i <= 5; i++) {
-            xref.append(String.format("%010d 00000 n \n", offsets.get(i)));
+            xref.append(String.format("%010d 00000 n \r\n", offsets.get(i)));
         }
-        xref.append("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n");
-        xref.append(xrefStart).append("\n%%EOF");
+        xref.append("trailer\r\n<< /Size 6 /Root 1 0 R >>\r\nstartxref\r\n");
+        xref.append(xrefStart).append("\r\n%%EOF");
         out.writeBytes(xref.toString().getBytes(StandardCharsets.ISO_8859_1));
         return out.toByteArray();
     }
