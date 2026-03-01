@@ -21,6 +21,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.TextStyle;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -41,13 +42,14 @@ public class HomeController {
         DayOfWeek dayOfWeek = today.getDayOfWeek();
         String shortDay = getShortDay(dayOfWeek);
         String fullDay = dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
 
         List<MedicationResponseDTO> medications = medicationService.getUserMedications(authentication.getName());
         List<WorkoutResponseDTO> workouts = workoutService.getUserWorkouts(authentication.getName())
                 .stream()
                 .filter(workout -> matchesDay(workout.getDayOfWeek(), dayOfWeek, shortDay, fullDay))
                 .collect(Collectors.toList());
-        MealPlanResponseDTO plan = mealPlanService.getCurrentPlan(authentication.getName());
+        MealPlanResponseDTO plan = mealPlanService.getAiPlanByWeekStart(authentication.getName(), weekStart);
 
         List<HomeScheduleItem> items = new ArrayList<>();
         for (MedicationResponseDTO medication : medications) {
@@ -71,8 +73,12 @@ public class HomeController {
                     continue;
                 }
                 for (MealPlanMealDTO meal : day.getMeals()) {
-                    String title = mealTypeLabel(meal.getMealType());
-                    String subtitle = meal.getTitle();
+                    String title = meal.getTitle();
+                    String typeLabel = mealTypeLabel(meal.getMealType());
+                    if (title == null || title.isBlank()) {
+                        title = typeLabel;
+                    }
+                    String subtitle = title.equals(typeLabel) ? null : typeLabel;
                     items.add(new HomeScheduleItem("MEAL", title, subtitle, meal.getTime(), null));
                 }
             }
