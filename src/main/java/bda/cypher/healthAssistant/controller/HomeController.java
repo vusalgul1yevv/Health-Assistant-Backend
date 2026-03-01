@@ -5,11 +5,16 @@ import bda.cypher.healthAssistant.dto.MealPlanMealDTO;
 import bda.cypher.healthAssistant.dto.MealPlanResponseDTO;
 import bda.cypher.healthAssistant.dto.MedicationResponseDTO;
 import bda.cypher.healthAssistant.dto.WorkoutResponseDTO;
+import bda.cypher.healthAssistant.entity.User;
+import bda.cypher.healthAssistant.repository.UserRepository;
+import bda.cypher.healthAssistant.service.MailService;
 import bda.cypher.healthAssistant.service.MealPlanService;
 import bda.cypher.healthAssistant.service.MedicationService;
 import bda.cypher.healthAssistant.service.WorkoutService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,6 +40,11 @@ public class HomeController {
     private final MedicationService medicationService;
     private final WorkoutService workoutService;
     private final MealPlanService mealPlanService;
+    private final UserRepository userRepository;
+    private final MailService mailService;
+
+    @Value("${notifications.enabled:true}")
+    private boolean notificationsEnabled;
 
     @GetMapping("/today")
     public ResponseEntity<HomeScheduleResponse> getTodaySchedule(Authentication authentication) {
@@ -44,12 +54,55 @@ public class HomeController {
         String fullDay = dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH);
         LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
 
-        List<MedicationResponseDTO> medications = medicationService.getUserMedications(authentication.getName());
-        List<WorkoutResponseDTO> workouts = workoutService.getUserWorkouts(authentication.getName())
+        List<HomeScheduleItem> items = buildTodayItems(authentication.getName(), dayOfWeek, shortDay, fullDay, weekStart);
+
+        items.sort(Comparator.comparing(item -> parseTime(item.time()), Comparator.nullsLast(Comparator.naturalOrder())));
+
+        return ResponseEntity.ok(new HomeScheduleResponse(today.toString(), shortDay, items));
+    }
+
+    @Scheduled(fixedDelayString = "${notifications.check-interval-ms:60000}")
+    public void sendScheduleNotifications() {
+        if (!notificationsEnabled) {
+            return;
+        }
+        LocalDate today = LocalDate.now();
+        DayOfWeek dayOfWeek = today.getDayOfWeek();
+        String shortDay = getShortDay(dayOfWeek);
+        String fullDay = dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalTime now = LocalTime.now();
+        List<User> users = userRepository.findAll();
+        for (User user : users) {
+            String email = user.getEmail();
+            if (email == null || email.isBlank()) {
+                continue;
+            }
+            List<HomeScheduleItem> items = buildTodayItems(email, dayOfWeek, shortDay, fullDay, weekStart);
+            for (HomeScheduleItem item : items) {
+                LocalTime itemTime = parseTime(item.time());
+                if (itemTime == null) {
+                    continue;
+                }
+                if (itemTime.getHour() == now.getHour() && itemTime.getMinute() == now.getMinute()) {
+                    String subject = notificationSubject(item);
+                    String content = notificationContent(item);
+                    try {
+                        mailService.sendScheduleNotification(email, subject, content);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+    }
+
+    private List<HomeScheduleItem> buildTodayItems(String email, DayOfWeek dayOfWeek, String shortDay, String fullDay, LocalDate weekStart) {
+        List<MedicationResponseDTO> medications = medicationService.getUserMedications(email);
+        List<WorkoutResponseDTO> workouts = workoutService.getUserWorkouts(email)
                 .stream()
                 .filter(workout -> matchesDay(workout.getDayOfWeek(), dayOfWeek, shortDay, fullDay))
                 .collect(Collectors.toList());
-        MealPlanResponseDTO plan = mealPlanService.getAiPlanByWeekStart(authentication.getName(), weekStart);
+        MealPlanResponseDTO plan = mealPlanService.getAiPlanByWeekStart(email, weekStart);
 
         List<HomeScheduleItem> items = new ArrayList<>();
         for (MedicationResponseDTO medication : medications) {
@@ -73,20 +126,35 @@ public class HomeController {
                     continue;
                 }
                 for (MealPlanMealDTO meal : day.getMeals()) {
-                    String title = meal.getTitle();
                     String typeLabel = mealTypeLabel(meal.getMealType());
-                    if (title == null || title.isBlank()) {
-                        title = typeLabel;
-                    }
-                    String subtitle = title.equals(typeLabel) ? null : typeLabel;
+                    String mealTitle = meal.getTitle();
+                    String title = typeLabel;
+                    String subtitle = mealTitle == null || mealTitle.isBlank() ? null : mealTitle;
                     items.add(new HomeScheduleItem("MEAL", title, subtitle, meal.getTime(), null));
                 }
             }
         }
+        return items;
+    }
 
-        items.sort(Comparator.comparing(item -> parseTime(item.time()), Comparator.nullsLast(Comparator.naturalOrder())));
+    private String notificationSubject(HomeScheduleItem item) {
+        return switch (item.type()) {
+            case "MEAL" -> "Yemək vaxtı";
+            case "MEDICATION" -> "Dərman vaxtı";
+            case "WORKOUT" -> "Məşq vaxtı";
+            default -> "Bildiriş";
+        };
+    }
 
-        return ResponseEntity.ok(new HomeScheduleResponse(today.toString(), shortDay, items));
+    private String notificationContent(HomeScheduleItem item) {
+        String title = item.title() == null ? "" : item.title();
+        String time = item.time() == null ? "" : item.time();
+        return switch (item.type()) {
+            case "MEAL" -> "Yemək vaxtıdır: " + title + " (" + time + ")";
+            case "MEDICATION" -> "Dərman vaxtıdır: " + title + " (" + time + ")";
+            case "WORKOUT" -> "Məşq vaxtıdır: " + title + " (" + time + ")";
+            default -> "Bildiriş vaxtıdır: " + title + " (" + time + ")";
+        };
     }
 
     private boolean matchesDay(String value, DayOfWeek dayOfWeek, String shortDay, String fullDay) {
