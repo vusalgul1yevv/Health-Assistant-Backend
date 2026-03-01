@@ -71,7 +71,7 @@ public class HomeController {
                     continue;
                 }
                 for (MealPlanMealDTO meal : day.getMeals()) {
-                    String title = meal.getMealType();
+                    String title = mealTypeLabel(meal.getMealType());
                     String subtitle = meal.getTitle();
                     items.add(new HomeScheduleItem("MEAL", title, subtitle, meal.getTime(), null));
                 }
@@ -149,6 +149,18 @@ public class HomeController {
             }
         }
         return null;
+    }
+
+    private String mealTypeLabel(String mealType) {
+        if (mealType == null) {
+            return "Yemək";
+        }
+        return switch (mealType) {
+            case "Breakfast" -> "Səhər yeməyi";
+            case "Lunch" -> "Nahar";
+            case "Dinner" -> "Şam yeməyi";
+            default -> mealType;
+        };
     }
 
     public record HomeScheduleResponse(
