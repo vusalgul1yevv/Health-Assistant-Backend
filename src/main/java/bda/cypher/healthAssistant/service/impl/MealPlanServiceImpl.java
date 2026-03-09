@@ -142,7 +142,8 @@ public class MealPlanServiceImpl implements MealPlanService {
         if (aiPlan != null) {
             mealPlanRepository.delete(aiPlan);
         }
-        MealPlan preset = createPresetPlan(user, targetWeek);
+        long rotationSeed = force ? System.nanoTime() : 0L;
+        MealPlan preset = createPresetPlan(user, targetWeek, rotationSeed);
         return mapToDTO(preset);
     }
 
@@ -326,7 +327,7 @@ public class MealPlanServiceImpl implements MealPlanService {
         return plan;
     }
 
-    private MealPlan createPresetPlan(User user, LocalDate weekStart) {
+    private MealPlan createPresetPlan(User user, LocalDate weekStart, long rotationSeed) {
         if (user.getHealthCondition() == null) {
             return mealPlanRepository.save(createDefaultPlan(user, weekStart, "ai"));
         }
@@ -355,7 +356,7 @@ public class MealPlanServiceImpl implements MealPlanService {
                 if (list.isEmpty()) {
                     continue;
                 }
-                int baseIndex = Math.floorMod(Objects.hash(user.getHealthCondition().getId(), weekStart.toString(), type), list.size());
+                int baseIndex = Math.floorMod(Objects.hash(user.getHealthCondition().getId(), weekStart.toString(), type, rotationSeed), list.size());
                 int selected = (baseIndex + dayIndex) % list.size();
                 MealTemplate template = list.get(selected);
                 MealPlanMeal meal = new MealPlanMeal();
