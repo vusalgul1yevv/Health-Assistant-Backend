@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -56,6 +57,7 @@ public class WorkoutServiceImpl implements WorkoutService {
         workout.setDayOfWeek(request.getDayOfWeek());
         workout.setInstructions(request.getInstructions());
         workout.setCreatedAt(Instant.now());
+        workout.setWeekStart(currentWeekStart());
         workout.setUser(user);
 
         Workout saved = workoutRepository.save(workout);
@@ -148,7 +150,7 @@ public class WorkoutServiceImpl implements WorkoutService {
     }
 
     private LocalDate currentWeekStart() {
-        return LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        return LocalDate.now(ZoneId.of("Asia/Baku")).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
     }
 
     private List<Workout> createPlanFromTemplates(User user, LocalDate weekStart, String source, boolean useRandom) {

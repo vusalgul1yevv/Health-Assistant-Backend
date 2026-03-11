@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.format.TextStyle;
@@ -48,7 +49,8 @@ public class HomeController {
 
     @GetMapping("/today")
     public ResponseEntity<HomeScheduleResponse> getTodaySchedule(Authentication authentication) {
-        LocalDate today = LocalDate.now();
+        ZoneId zoneId = ZoneId.of("Asia/Baku");
+        LocalDate today = LocalDate.now(zoneId);
         DayOfWeek dayOfWeek = today.getDayOfWeek();
         String shortDay = getShortDay(dayOfWeek);
         String fullDay = dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH);
@@ -66,12 +68,13 @@ public class HomeController {
         if (!notificationsEnabled) {
             return;
         }
-        LocalDate today = LocalDate.now();
+        ZoneId zoneId = ZoneId.of("Asia/Baku");
+        LocalDate today = LocalDate.now(zoneId);
         DayOfWeek dayOfWeek = today.getDayOfWeek();
         String shortDay = getShortDay(dayOfWeek);
         String fullDay = dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH);
         LocalDate weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        LocalTime now = LocalTime.now();
+        LocalTime now = LocalTime.now(zoneId);
         List<User> users = userRepository.findAll();
         for (User user : users) {
             String email = user.getEmail();
@@ -100,6 +103,7 @@ public class HomeController {
         List<MedicationResponseDTO> medications = medicationService.getUserMedications(email);
         List<WorkoutResponseDTO> workouts = workoutService.getUserWorkouts(email)
                 .stream()
+                .filter(workout -> weekStart != null && weekStart.equals(workout.getWeekStart()))
                 .filter(workout -> matchesDay(workout.getDayOfWeek(), dayOfWeek, shortDay, fullDay))
                 .collect(Collectors.toList());
         MealPlanResponseDTO plan = mealPlanService.getAiPlanByWeekStart(email, weekStart);
